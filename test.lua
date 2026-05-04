@@ -88,7 +88,7 @@ print("--- Dang cho Slot A san sang ---")
 repeat task.wait(1) until isReallyVisible(slotA)
 
 clickPhysicalButton(slotA)
-task.wait(25)
+task.wait(2)
 
 -- 2. Thao tác phím ban đầu
 print("--- Bat dau thuc hien phim ---")
@@ -134,7 +134,7 @@ end -- End of Part 1
 
 -- phan 2 
 if p == 14916516914 then
-task.wait(2)
+task.wait(60)
 
 local Players = game:GetService("Players")
 local VirtualInputManager = game:GetService("VirtualInputManager")
@@ -166,6 +166,7 @@ local function extractAndSaveBoostTime(boostElement)
     end
     return false
 end
+
     -------------------------------------------------------------------------
     -- 1. DỊCH CHUYỂN ĐẾN TỌA ĐỘ ĐƯỢC LƯU
     -------------------------------------------------------------------------
@@ -196,10 +197,12 @@ end
     local mapsContainer = missionsFolder.Missions.Main.Maps.Maps
     local mapList = {"Chapel_Missions", "Docks_Missions", "Forest_Missions", "Outskirts_Missions", "Shiganshina_Missions", "Stohess_Missions", "Trost_Missions", "Utgard_Missions"}
     local boostFound = false
+    local boostElement = nil
     
     for _, name in ipairs(mapList) do
         local map = mapsContainer:FindFirstChild(name)
         if map and map:FindFirstChild("Boost") then
+            boostElement = map:FindFirstChild("Boost")
             local mx = map.AbsolutePosition.X + (map.AbsoluteSize.X / 2)
             local my = map.AbsolutePosition.Y + (map.AbsoluteSize.Y / 2) + Y_OFFSET
             
@@ -216,6 +219,12 @@ end
     if not boostFound then return end -- Dừng nếu không có boost
     task.wait(0.5)
 
+    -- Extract and save boost timer if found
+    if boostFound and boostElement then
+        task.wait(1)
+        extractAndSaveBoostTime(boostElement)
+    end
+
     -------------------------------------------------------------------------
     -- 4. NHẤN VÀO CREATE (Creation_Missions)
     -------------------------------------------------------------------------
@@ -231,56 +240,54 @@ end
     end
 
     print("--- Pipeline hoàn tất! ---")
-end
 
 -- [BƯỚC 5] Click vào nút để mở bảng Modifiers
-local modInfo = pGui:WaitForChild("Interface"):WaitForChild("Missions"):WaitForChild("Info"):WaitForChild("Main"):WaitForChild("Info")
-local openModifiersBtn = modInfo:WaitForChild("Modifiers"):WaitForChild("Modifiers_Buttons")
-humanClick(openModifiersBtn)
+    local modInfo = pGui:WaitForChild("Interface"):WaitForChild("Missions"):WaitForChild("Info"):WaitForChild("Main"):WaitForChild("Info")
+    local openModifiersBtn = modInfo:WaitForChild("Modifiers"):WaitForChild("Modifiers_Buttons")
+    humanClick(openModifiersBtn)
 
-task.wait(0.5)
+    task.wait(0.5)
 
 -- [BƯỚC 6] Vòng lặp chọn Modifiers
-local options = modInfo:WaitForChild("Modifiers"):WaitForChild("Options")
-local modifierNames = {
-    "Grid", "Boring", "Chronic Injuries", "Fog", "Glass Cannon", 
-    "Injury Prone", "Nightmare", "No Memories", "No Perks", 
-    "No Skills", "Oddball", "Simple", "Time Trial"
-}
+    local options = modInfo:WaitForChild("Modifiers"):WaitForChild("Options")
+    local modifierNames = {
+        "Grid", "Boring", "Chronic Injuries", "Fog", "Glass Cannon", 
+        "Injury Prone", "Nightmare", "No Memories", "No Perks", 
+        "No Skills", "Oddball", "Simple", "Time Trial"
+    }
 
-for _, modName in ipairs(modifierNames) do
-    local targetMod = nil
-    for _, child in ipairs(options:GetChildren()) do
-        if child.Name == modName and child:IsA("GuiObject") then
-            targetMod = child
-            break
+    for _, modName in ipairs(modifierNames) do
+        local targetMod = nil
+        for _, child in ipairs(options:GetChildren()) do
+            if child.Name == modName and child:IsA("GuiObject") then
+                targetMod = child
+                break
+            end
+        end
+        
+        if targetMod then
+            if options:IsA("ScrollingFrame") then
+                local targetY = targetMod.AbsolutePosition.Y - options.AbsolutePosition.Y + options.CanvasPosition.Y
+                options.CanvasPosition = Vector2.new(0, targetY - (options.AbsoluteSize.Y / 3)) 
+                task.wait(0.1)
+            end
+            local clickTarget = targetMod:FindFirstChild("Interact") or targetMod
+            humanClick(clickTarget)
         end
     end
-    
-    if targetMod then
-        if options:IsA("ScrollingFrame") then
-            local targetY = targetMod.AbsolutePosition.Y - options.AbsolutePosition.Y + options.CanvasPosition.Y
-            options.CanvasPosition = Vector2.new(0, targetY - (options.AbsoluteSize.Y / 3)) 
-            task.wait(0.1)
-        end
-        local clickTarget = targetMod:FindFirstChild("Interact") or targetMod
-        humanClick(clickTarget)
-    end
-end
 
 -- [BƯỚC 7] Click nút Return để đóng bảng Modifiers
-local returnBtn = modInfo:WaitForChild("Modifiers"):WaitForChild("Modifiers_Buttons"):WaitForChild("Modifiers_Return")
-humanClick(returnBtn)
+    local returnBtn = modInfo:WaitForChild("Modifiers"):WaitForChild("Modifiers_Buttons"):WaitForChild("Modifiers_Return")
+    humanClick(returnBtn)
 
-task.wait(0.5)
+    task.wait(0.5)
 
 -- [BƯỚC 8] Click nút Begin để bắt đầu Mission
-local beginBtn = missionsFolder:WaitForChild("Info"):WaitForChild("Main"):WaitForChild("Info"):WaitForChild("Main"):WaitForChild("Info_Buttons"):WaitForChild("Begin")
-humanClick(beginBtn)
+    local beginBtn = missionsFolder:WaitForChild("Info"):WaitForChild("Main"):WaitForChild("Info"):WaitForChild("Main"):WaitForChild("Info_Buttons"):WaitForChild("Begin")
+    humanClick(beginBtn)
 
-print("--- Pipeline Hoàn Tất! ---")
- 
--- End of Part 2
+    print("--- Pipeline Hoàn Tất! ---")
+end -- End of Part 2
 
 -- phan 3 - Chạy chỉ khi không ở trong 2 Place ID đặc biệt
 if p ~= 13379208636 and p ~= 14916516914 then
