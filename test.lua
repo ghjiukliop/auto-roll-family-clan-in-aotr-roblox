@@ -88,7 +88,7 @@ print("--- Dang cho Slot A san sang ---")
 repeat task.wait(1) until isReallyVisible(slotA)
 
 clickPhysicalButton(slotA)
-task.wait(2)
+task.wait(25)
 
 -- 2. Thao tác phím ban đầu
 print("--- Bat dau thuc hien phim ---")
