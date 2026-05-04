@@ -1,17 +1,33 @@
+local g = game.GameId
+local p = game.PlaceId
+
+print("Universe ID: " .. tostring(g))
+print("Place ID: " .. tostring(p))
+
+game:GetService("StarterGui"):SetCore("SendNotification", {
+    Title = "ID Logged",
+    Text = "Universe: " .. g .. "\nPlace: " .. p,
+    Duration = 5
+})
+
+-- Conditional logic based on Place ID
+if p == 13379208636 then
+    print("Running PART 1 (Slot Selection)")
+
+elseif p == 14916516914 then
+    print("Running PART 2 (Boost Timer)")
+else
+    print("Unknown Place ID, script will not run") 
+    return
+end
+
+-- phan 1
+if p == 13379208636 then
 local player = game:GetService("Players").LocalPlayer
 local vim = game:GetService("VirtualInputManager")
 local http = game:GetService("HttpService")
-local fs = game:GetService("DataStoreService")
 
-local WEBHOOK_URL_WIN ="Your webhook link here"
-local WEBHOOK_URL_LOG = "Your webhook link here"
-local HISTORY_FILE = "rollHistory.json"
-
-local TARGET_CLANS = {"Fritz", "Helos"}
-local MAX_ROLLS = 10
 local delayTime = 1
-local rollHistory = {}
-local sentAccounts = {}
 
 local function isReallyVisible(obj)
     if not obj or not obj:IsA("GuiObject") then return false end
@@ -59,121 +75,6 @@ local function pressKey(keyCode)
     task.wait(delayTime)
 end
 
-local function loadHistory()
-    local content = readfile and readfile(HISTORY_FILE) or nil
-    if content then
-        local success, data = pcall(function() return http:JSONDecode(content) end)
-        if success and data then
-            return data
-        end
-    end
-    return {}
-end
-
-local function saveHistory(historyData)
-    local content = http:JSONEncode(historyData)
-    if writefile then
-        pcall(function()
-            writefile(HISTORY_FILE, content)
-        end)
-    end
-end
-
-local function fileExists(filename)
-    local success = pcall(function()
-        readfile(filename)
-    end)
-    return success
-end
-
-local function initializeHistoryFile()
-    if not fileExists(HISTORY_FILE) then
-        saveHistory({})
-        print("Tao file rollHistory.json thanh cong")
-    else
-        print("File rollHistory.json da ton tai")
-    end
-end
-
-local function accountAlreadySent(accountName, historyData)
-    for _, entry in ipairs(historyData) do
-        if entry["name"] == accountName and entry["sent"] == true then
-            return true
-        end
-    end
-    return false
-end
-
-local function markAccountAsSent(accountName, clans, historyData)
-    for _, entry in ipairs(historyData) do
-        if entry["name"] == accountName then
-            entry["sent"] = true
-            return
-        end
-    end
-    table.insert(historyData, {["name"] = accountName, ["clans"] = clans, ["sent"] = true})
-end
-
-initializeHistoryFile()
-local historyData = loadHistory()
-local accountName = player.Name
-local alreadySent = accountAlreadySent(accountName, historyData)
-
--- Bảng mã màu ANSI cho Discord
-local ansi = {
-    white = "\27[0;37m", blue = "\27[0;34m", purple = "\27[0;35m", 
-    yellow = "\27[0;33m", red = "\27[0;31m", reset = "\27[0m"
-}
-
--- Biến lưu trữ tạm thời trong phiên chạy này
-local currentSessionClans = {}
-
-local function getClanColor(clan)
-    local c = clan:lower()
-    if c:find("mythic") then return ansi.red, 15548997
-    elseif c:find("legendary") then return ansi.yellow, 16776960
-    elseif c:find("epic") then return ansi.purple, 10181046
-    elseif c:find("rare") then return ansi.blue, 3447003
-    else return ansi.white, 16777215 end
-end
-
-local function sendFinalWebhook()
-    local coloredList = ""
-    local maxColor = 16777215
-    
-    for _, clan in ipairs(currentSessionClans) do
-        local colorCode, sidebar = getClanColor(clan)
-        coloredList = coloredList .. colorCode .. clan .. ansi.reset .. "\n"
-        if sidebar ~= 16777215 then maxColor = sidebar end
-    end
-
-    local payload = http:JSONEncode({
-        username = "Your name STORE",
-        embeds = {{
-            title = "🍌 Roll Completed 🍌",
-            color = maxColor,
-            fields = {
-                {name = "👤 Account", value = "```ansi\n" .. ansi.yellow .. accountName .. ansi.reset .. "```"},
-                {name = "📜 Roll History", value = "```ansi\n" .. (coloredList ~= "" and coloredList or "No rolls") .. "```"}
-            },
-            footer = {text = "Cloud Phone System • " .. os.date("%X")}
-        }}
-    })
-
-    local req = request or http_request or (syn and syn.request)
-    if req then
-        req({Url = WEBHOOK_URL_LOG, Method = "POST", Headers = {["Content-Type"] = "application/json"}, Body = payload})
-    end
-    
-    markAccountAsSent(accountName, currentSessionClans, historyData)
-    saveHistory(historyData)
-end
-
-local function exitGame()
-    task.wait(1)
-    game:Shutdown()
-end
-
 if not game:IsLoaded() then
     game.Loaded:Wait()
 end
@@ -182,6 +83,7 @@ local playerGui = player:WaitForChild("PlayerGui", 999)
 local interface = playerGui:WaitForChild("Interface", 999)
 local titleScreen = interface:WaitForChild("Title_Screen", 999)
 
+-- 1. Chọn Slot A
 local slotA = titleScreen:WaitForChild("Slots", 999):WaitForChild("A", 999):WaitForChild("Select_A", 999)
 print("--- Dang cho Slot A san sang ---")
 repeat task.wait(1) until isReallyVisible(slotA)
@@ -189,6 +91,7 @@ repeat task.wait(1) until isReallyVisible(slotA)
 clickPhysicalButton(slotA)
 task.wait(2)
 
+-- 2. Thao tác phím ban đầu
 print("--- Bat dau thuc hien phim ---")
 pressKey(Enum.KeyCode.BackSlash)
 for i = 1, 3 do
@@ -197,54 +100,250 @@ end
 pressKey(Enum.KeyCode.Return)
 
 task.wait(3)
-delayTime = 6
 
-local customBtn = waitAndGetClickable(interface.Title_Screen.Buttons, "Customisation")
-if customBtn then
-    clickPhysicalButton(customBtn)
+-- 3. Logic: Click Play -> Warning No -> Play -> Enter
+local playBtn = waitAndGetClickable(titleScreen.Buttons, "Play")
+
+if playBtn then
+    print("--- Click vao Play lan 1 ---")
+    clickPhysicalButton(playBtn)
+    
+    local warningFrame = interface:WaitForChild("Warning", 10)
+    if warningFrame then
+        local noBtn = waitAndGetClickable(warningFrame.Prompt.Main, "No")
+        if noBtn then
+            print("--- Thay bang Warning, dang click No ---")
+            task.wait(1)
+            clickPhysicalButton(noBtn)
+            
+            task.wait(2)
+            print("--- Dang click vao Play lan 2 ---")
+            clickPhysicalButton(playBtn)
+            
+            -- ĐOẠN CẬP NHẬT MỚI CỦA BẠN:
+            task.wait(1) -- Chờ thêm 1 giây
+            print("--- Dang nhan phim Return (Enter) ---")
+            pressKey(Enum.KeyCode.Return)
+        end
+    end
+else
+    print("--- Khong tim thay nut Play ---")
 end
 
-local familyCat = waitAndGetClickable(interface.Customisation.Categories, "Family")
-if familyCat then
-    clickPhysicalButton(familyCat)
+print("--- Hoan thanh quy trinh ---")
+end -- End of Part 1
+
+-- phan 2 
+if p == 14916516914 then
+task.wait(2)
+
+local Players = game:GetService("Players")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local player = Players.LocalPlayer
+local pGui = player:WaitForChild("PlayerGui")
+local Y_OFFSET = 58
+
+-- Boost Timer Functions
+local function checkAndLoadBoostTimer()
+    local success, content = pcall(function() return readfile("boost_timer.txt") end)
+    if success and content then
+        local endTime = tonumber(content)
+        if endTime and os.time() < endTime then
+            print("Boost still active! Time remaining: " .. (endTime - os.time()) .. " seconds")
+            return true
+        else
+            print("Boost has expired, leaving mission...")
+            return false
+        end
+    end
+    return true -- No timer file yet, proceed normally
 end
 
-local rollBtn = waitAndGetClickable(interface.Customisation.Family.Buttons_2, "Roll")
-local clanTitle = interface.Customisation.Family.Family:WaitForChild("Title")
+local function saveBoostTimer(endTime)
+    local success = pcall(function() writefile("boost_timer.txt", tostring(endTime)) end)
+    if success then
+        print("Boost timer saved: " .. os.date("%H:%M:%S", endTime))
+    end
+end
 
-if rollBtn then
-    local targetFound = false
-    for i = 1, MAX_ROLLS do
-        local oldClan = clanTitle.Text
-        print("Dang Roll luot: " .. i)
-        clickPhysicalButton(rollBtn)
-        local t = 0
-        repeat
-            task.wait(0.5)
-            t = t + 0.5
-        until clanTitle.Text ~= oldClan or t > 4
-        local currentClan = clanTitle.Text
-        print("Ket qua: " .. currentClan)
-        table.insert(rollHistory, currentClan)
-        table.insert(currentSessionClans, currentClan)
-        local found = false
-        for _, target in pairs(TARGET_CLANS) do
-            if string.find(string.lower(currentClan), string.lower(target)) then
-                found = true
-                break
+local function extractAndSaveBoostTime(boostElement)
+    local path = boostElement:FindFirstChild("Title")
+    if path then
+        local txt = path.ContentText
+        local m, s = txt:match("(%d+):(%d+)")
+        if m and s then
+            local duration = (tonumber(m) * 60) + tonumber(s)
+            local endTime = os.time() + duration
+            saveBoostTimer(endTime)
+            print("--- Boost Info ---")
+            print("Duration: " .. m .. "m " .. s .. "s")
+            print("End Time: " .. os.date("%H:%M:%S", endTime))
+            return true
+        end
+    end
+    return false
+end
+
+local function isVisible(o)
+    local c = o
+    while c and c:IsA("GuiObject") do
+        if not c.Visible then return false end
+        c = c.Parent
+    end
+    return o.AbsoluteSize.X > 0
+end
+
+local function clickLeaveButton()
+    print("Waiting for Leave_2 button...")
+    local maxWait = 30
+    local elapsed = 0
+    
+    while elapsed < maxWait do
+        local b = pGui:FindFirstChild("Interface")
+        if b then
+            b = b:FindFirstChild("Rewards")
+            if b then
+                b = b:FindFirstChild("Main")
+                if b then
+                    b = b:FindFirstChild("Info")
+                    if b then
+                        b = b:FindFirstChild("Main")
+                        if b then
+                            b = b:FindFirstChild("Buttons")
+                            if b then
+                                b = b:FindFirstChild("Leave_2")
+                                if b and isVisible(b) then
+                                    print("Found Leave_2, spam clicking...")
+                                    local clickCount = math.random(2, 7)
+                                    print("Clicking " .. clickCount .. " times")
+                                    
+                                    for i = 1, clickCount do
+                                        local x = b.AbsolutePosition.X + (b.AbsoluteSize.X / 2)
+                                        local y = b.AbsolutePosition.Y + (b.AbsoluteSize.Y / 2) + 58
+                                        VirtualInputManager:SendMouseButtonEvent(x, y, 0, true, game, 1)
+                                        task.wait(0.05)
+                                        VirtualInputManager:SendMouseButtonEvent(x, y, 0, false, game, 1)
+                                        task.wait(0.1)
+                                        print("Click " .. i .. " at: " .. x .. ", " .. y)
+                                    end
+                                    print("Leave sequence completed")
+                                    return
+                                end
+                            end
+                        end
+                    end
+                end
             end
         end
-        if found then
-            targetFound = true
-            break 
-        end
-        task.wait(2.5)
+        task.wait(0.5)
+        elapsed = elapsed + 0.5
     end
-    sendFinalWebhook()
-    exitGame()
-else
-    sendFinalWebhook()
-    exitGame()
+    
+    print("Timeout: Leave_2 button did not appear within " .. maxWait .. " seconds")
 end
 
-print("--- Xong! ---")
+-- Check if boost has expired at startup
+local boostStillActive = checkAndLoadBoostTimer()
+if not boostStillActive then
+    clickLeaveButton()
+    return
+end 
+
+local function humanClick(obj)
+    if obj and obj:IsA("GuiObject") and obj.Visible and obj.AbsoluteSize.X > 0 then
+        local x = obj.AbsolutePosition.X + (obj.AbsoluteSize.X / 2)
+        local y = obj.AbsolutePosition.Y + (obj.AbsoluteSize.Y / 2) + Y_OFFSET
+        
+        VirtualInputManager:SendMouseMoveEvent(x, y, game)
+        task.wait(0.1)
+        VirtualInputManager:SendMouseButtonEvent(x, y, 0, true, game, 1)
+        task.wait(0.05)
+        VirtualInputManager:SendMouseButtonEvent(x, y, 0, false, game, 1)
+        
+        task.wait(0.15)
+        return true
+    end
+    return false
+end
+
+if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+    player.Character.HumanoidRootPart.CFrame = CFrame.new(223.36, 6.25, 51.28)
+end
+task.wait(1)
+
+local missionsFolder = pGui:WaitForChild("Interface"):WaitForChild("Missions")
+humanClick(missionsFolder:WaitForChild("Prompt"):WaitForChild("Selection"):WaitForChild("Missions"))
+
+local mapsContainer = missionsFolder.Missions.Main.Maps.Maps
+local mapList = {"Chapel_Missions", "Docks_Missions", "Forest_Missions", "Outskirts_Missions", "Shiganshina_Missions", "Stohess_Missions", "Trost_Missions", "Utgard_Missions"}
+local boostFound = false
+local boostElement = nil
+for i = 1, 30 do
+    for _, name in ipairs(mapList) do
+        local map = mapsContainer:FindFirstChild(name)
+        if map and map:FindFirstChild("Boost") then
+            boostElement = map:FindFirstChild("Boost")
+            humanClick(map)
+            boostFound = true
+            break
+        end
+    end
+    if boostFound then break end
+    task.wait(0.1)
+end
+
+-- Extract and save boost timer if found
+if boostFound and boostElement then
+    task.wait(1)
+    extractAndSaveBoostTime(boostElement)
+end
+
+humanClick(missionsFolder.Missions.Main.Info.Main.Buttons:WaitForChild("Creation_Missions"))
+
+-- [BƯỚC 5] Click vào nút để mở bảng Modifiers
+local modInfo = pGui:WaitForChild("Interface"):WaitForChild("Missions"):WaitForChild("Info"):WaitForChild("Main"):WaitForChild("Info")
+local openModifiersBtn = modInfo:WaitForChild("Modifiers"):WaitForChild("Modifiers_Buttons")
+humanClick(openModifiersBtn)
+
+task.wait(0.5)
+
+-- [BƯỚC 6] Vòng lặp chọn Modifiers
+local options = modInfo:WaitForChild("Modifiers"):WaitForChild("Options")
+local modifierNames = {
+    "Grid", "Boring", "Chronic Injuries", "Fog", "Glass Cannon", 
+    "Injury Prone", "Nightmare", "No Memories", "No Perks", 
+    "No Skills", "Oddball", "Simple", "Time Trial"
+}
+
+for _, modName in ipairs(modifierNames) do
+    local targetMod = nil
+    for _, child in ipairs(options:GetChildren()) do
+        if child.Name == modName and child:IsA("GuiObject") then
+            targetMod = child
+            break
+        end
+    end
+    
+    if targetMod then
+        if options:IsA("ScrollingFrame") then
+            local targetY = targetMod.AbsolutePosition.Y - options.AbsolutePosition.Y + options.CanvasPosition.Y
+            options.CanvasPosition = Vector2.new(0, targetY - (options.AbsoluteSize.Y / 3)) 
+            task.wait(0.1)
+        end
+        local clickTarget = targetMod:FindFirstChild("Interact") or targetMod
+        humanClick(clickTarget)
+    end
+end
+
+-- [BƯỚC 7] Click nút Return để đóng bảng Modifiers
+local returnBtn = modInfo:WaitForChild("Modifiers"):WaitForChild("Modifiers_Buttons"):WaitForChild("Modifiers_Return")
+humanClick(returnBtn)
+
+task.wait(0.5)
+
+-- [BƯỚC 8] Click nút Begin để bắt đầu Mission
+local beginBtn = missionsFolder:WaitForChild("Info"):WaitForChild("Main"):WaitForChild("Info"):WaitForChild("Main"):WaitForChild("Info_Buttons"):WaitForChild("Begin")
+humanClick(beginBtn)
+
+print("--- Pipeline Hoàn Tất! ---")
+end -- End of Part 2
