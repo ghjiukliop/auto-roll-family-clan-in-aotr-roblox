@@ -17,8 +17,7 @@ if p == 13379208636 then
 elseif p == 14916516914 then
     print("Running PART 2 (Boost Timer)")
 else
-    print("Unknown Place ID, script will not run") 
-    return
+    print("Place ID not matched for Part 1 or Part 2, proceeding to Part 3") 
 end
 
 -- phan 1
@@ -364,7 +363,8 @@ humanClick(beginBtn)
 print("--- Pipeline Hoàn Tất! ---")
 end -- End of Part 2
 
--- phan 3 - Chạy ở tất cả Place ID
+-- phan 3 - Chạy chỉ khi không ở trong 2 Place ID đặc biệt
+if p ~= 13379208636 and p ~= 14916516914 then
 print("Running PART 3 (Boost Timer Check)")
 
 task.wait(1)
@@ -455,3 +455,4 @@ if not boostStillActive then
 end
 
 print("--- Part 3 Completed ---")
+end -- End of Part 3
