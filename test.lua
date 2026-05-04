@@ -166,80 +166,72 @@ local function extractAndSaveBoostTime(boostElement)
     end
     return false
 end
-
-
-
-local function humanClick(obj, checkTarget)
-    if obj and obj:IsA("GuiObject") and obj.Visible and obj.AbsoluteSize.X > 0 then
-        local attempts = 0
-        -- Click tối đa 5 lần hoặc cho đến khi UI mục tiêu hiện ra
-        while attempts < 5 do
-            local x = obj.AbsolutePosition.X + (obj.AbsoluteSize.X / 2)
-            local y = obj.AbsolutePosition.Y + (obj.AbsoluteSize.Y / 2) + Y_OFFSET
-            
-            -- Di chuyển và Click
-            VirtualInputManager:SendMouseMoveEvent(x, y, game)
-            task.wait(0.1)
-            VirtualInputManager:SendMouseButtonEvent(x, y, 0, true, game, 1)
-            task.wait(0.05)
-            VirtualInputManager:SendMouseButtonEvent(x, y, 0, false, game, 1)
-            
-            task.wait(0.5) -- Đợi UI phản hồi
-            
-            -- Nếu có checkTarget (ví dụ: bảng Mission hiện ra), thì dừng click
-            if not checkTarget or (checkTarget and checkTarget.Visible) then
-                return true
-            end
-            
-            attempts = attempts + 1
-            warn("Click thu lai lan " .. attempts)
-        end
+    -------------------------------------------------------------------------
+    -- 1. DỊCH CHUYỂN ĐẾN TỌA ĐỘ ĐƯỢC LƯU
+    -------------------------------------------------------------------------
+    if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+        player.Character.HumanoidRootPart.CFrame = CFrame.new(223.36, 6.25, 51.28)
     end
-    return false
-end
+    task.wait(1)
 
-if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-    player.Character.HumanoidRootPart.CFrame = CFrame.new(223.36, 6.25, 51.28)
-end
-task.wait(1)
+    -------------------------------------------------------------------------
+    -- 2. CLICK VÀO MISSIONS
+    -------------------------------------------------------------------------
+    local missionsBtn = pGui:WaitForChild("Interface"):WaitForChild("Missions"):WaitForChild("Prompt"):WaitForChild("Selection"):WaitForChild("Missions")
+    
+    if missionsBtn and missionsBtn.Visible then
+        local x = missionsBtn.AbsolutePosition.X + (missionsBtn.AbsoluteSize.X / 2)
+        local y = missionsBtn.AbsolutePosition.Y + (missionsBtn.AbsoluteSize.Y / 2) + Y_OFFSET
+        
+        VirtualInputManager:SendMouseButtonEvent(x, y, 0, true, game, 1)
+        task.wait(0.05)
+        VirtualInputManager:SendMouseButtonEvent(x, y, 0, false, game, 1)
+    end
+    task.wait(1.5) -- Đợi giao diện Mission hiện ra
 
-local missionsFolder = pGui:WaitForChild("Interface"):WaitForChild("Missions")
-local interactBtn = missionsFolder:WaitForChild("Prompt"):WaitForChild("Selection"):WaitForChild("Missions"):WaitForChild("Interact")
-local targetUI = missionsFolder:WaitForChild("Missions"):WaitForChild("Main"):WaitForChild("Info"):WaitForChild("Main")
-
--- Click và check cho tới khi trang giao diện Main hiện ra
-humanClick(interactBtn, targetUI)
-
-local mapsContainer = missionsFolder.Missions.Main.Maps.Maps
-local mapList = {"Chapel_Missions", "Docks_Missions", "Forest_Missions", "Outskirts_Missions", "Shiganshina_Missions", "Stohess_Missions", "Trost_Missions", "Utgard_Missions"}
-local boostFound = false
-local boostElement = nil
-
-for i = 1, 30 do
+    -------------------------------------------------------------------------
+    -- 3. TÌM MAP CÓ BOOST REWARD
+    -------------------------------------------------------------------------
+    local missionsFolder = pGui.Interface.Missions
+    local mapsContainer = missionsFolder.Missions.Main.Maps.Maps
+    local mapList = {"Chapel_Missions", "Docks_Missions", "Forest_Missions", "Outskirts_Missions", "Shiganshina_Missions", "Stohess_Missions", "Trost_Missions", "Utgard_Missions"}
+    local boostFound = false
+    
     for _, name in ipairs(mapList) do
         local map = mapsContainer:FindFirstChild(name)
         if map and map:FindFirstChild("Boost") then
-            boostElement = map:FindFirstChild("Boost")
-            humanClick(map)
-            task.wait(0.2)
-            humanClick(map)
-            task.wait(0.2)
-            humanClick(map)
+            local mx = map.AbsolutePosition.X + (map.AbsoluteSize.X / 2)
+            local my = map.AbsolutePosition.Y + (map.AbsoluteSize.Y / 2) + Y_OFFSET
+            
+            -- Click chọn map có boost
+            VirtualInputManager:SendMouseButtonEvent(mx, my, 0, true, game, 1)
+            task.wait(0.05)
+            VirtualInputManager:SendMouseButtonEvent(mx, my, 0, false, game, 1)
+            
             boostFound = true
             break
         end
     end
-    if boostFound then break end
-    task.wait(0.1)
-end
 
--- Extract and save boost timer if found
-if boostFound and boostElement then
-    task.wait(1)
-    extractAndSaveBoostTime(boostElement)
-end
+    if not boostFound then return end -- Dừng nếu không có boost
+    task.wait(0.5)
 
-humanClick(missionsFolder.Missions.Main.Info.Main.Buttons:WaitForChild("Creation_Missions"))
+    -------------------------------------------------------------------------
+    -- 4. NHẤN VÀO CREATE (Creation_Missions)
+    -------------------------------------------------------------------------
+    local creationBtn = missionsFolder.Missions.Main.Info.Main.Buttons:WaitForChild("Creation_Missions")
+    
+    if creationBtn and creationBtn.Visible then
+        local cx = creationBtn.AbsolutePosition.X + (creationBtn.AbsoluteSize.X / 2)
+        local cy = creationBtn.AbsolutePosition.Y + (creationBtn.AbsoluteSize.Y / 2) + Y_OFFSET
+        
+        VirtualInputManager:SendMouseButtonEvent(cx, cy, 0, true, game, 1)
+        task.wait(0.05)
+        VirtualInputManager:SendMouseButtonEvent(cx, cy, 0, false, game, 1)
+    end
+
+    print("--- Pipeline hoàn tất! ---")
+end
 
 -- [BƯỚC 5] Click vào nút để mở bảng Modifiers
 local modInfo = pGui:WaitForChild("Interface"):WaitForChild("Missions"):WaitForChild("Info"):WaitForChild("Main"):WaitForChild("Info")
@@ -287,7 +279,8 @@ local beginBtn = missionsFolder:WaitForChild("Info"):WaitForChild("Main"):WaitFo
 humanClick(beginBtn)
 
 print("--- Pipeline Hoàn Tất! ---")
-end -- End of Part 2
+ 
+-- End of Part 2
 
 -- phan 3 - Chạy chỉ khi không ở trong 2 Place ID đặc biệt
 if p ~= 13379208636 and p ~= 14916516914 then
