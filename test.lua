@@ -135,7 +135,7 @@ end -- End of Part 1
 
 -- phan 2 
 if p == 14916516914 then
-task.wait(8)
+task.wait(2)
 
 local Players = game:GetService("Players")
 local VirtualInputManager = game:GetService("VirtualInputManager")
@@ -242,12 +242,7 @@ local function clickLeaveButton()
     print("Timeout: Leave_2 button did not appear within " .. maxWait .. " seconds")
 end
 
--- Check if boost has expired at startup
-local boostStillActive = checkAndLoadBoostTimer()
-if not boostStillActive then
-    clickLeaveButton()
-    return
-end 
+
 
 local function humanClick(obj, checkTarget)
     if obj and obj:IsA("GuiObject") and obj.Visible and obj.AbsoluteSize.X > 0 then
@@ -284,18 +279,17 @@ end
 task.wait(1)
 
 local missionsFolder = pGui:WaitForChild("Interface"):WaitForChild("Missions")
-local promptSelection = missionsFolder:WaitForChild("Prompt"):WaitForChild("Selection")
-local missionsElement = promptSelection:WaitForChild("Missions")
-local interactBtn = missionsElement:WaitForChild("Interact")
-local targetUI = missionsFolder:WaitForChild("Missions"):WaitForChild("Main"):WaitForChild("Info"):WaitForChild("Main") -- UI sẽ hiện ra sau khi click
+local interactBtn = missionsFolder:WaitForChild("Prompt"):WaitForChild("Selection"):WaitForChild("Missions"):WaitForChild("Interact")
+local targetUI = missionsFolder:WaitForChild("Missions"):WaitForChild("Main"):WaitForChild("Info"):WaitForChild("Main")
 
--- Click vào Interact button cho đến khi targetUI hiện ra
+-- Click và check cho tới khi trang giao diện Main hiện ra
 humanClick(interactBtn, targetUI)
 
 local mapsContainer = missionsFolder.Missions.Main.Maps.Maps
 local mapList = {"Chapel_Missions", "Docks_Missions", "Forest_Missions", "Outskirts_Missions", "Shiganshina_Missions", "Stohess_Missions", "Trost_Missions", "Utgard_Missions"}
 local boostFound = false
 local boostElement = nil
+
 for i = 1, 30 do
     for _, name in ipairs(mapList) do
         local map = mapsContainer:FindFirstChild(name)
@@ -369,3 +363,95 @@ humanClick(beginBtn)
 
 print("--- Pipeline Hoàn Tất! ---")
 end -- End of Part 2
+
+-- phan 3 - Chạy ở tất cả Place ID
+print("Running PART 3 (Boost Timer Check)")
+
+task.wait(1)
+
+local Players = game:GetService("Players")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local player = Players.LocalPlayer
+local pGui = player:WaitForChild("PlayerGui")
+
+-- Boost Timer Functions
+local function checkAndLoadBoostTimer()
+    local success, content = pcall(function() return readfile("boost_timer.txt") end)
+    if success and content then
+        local endTime = tonumber(content)
+        if endTime and os.time() < endTime then
+            print("Boost still active! Time remaining: " .. (endTime - os.time()) .. " seconds")
+            return true
+        else
+            print("Boost has expired, leaving mission...")
+            return false
+        end
+    end
+    return true -- No timer file yet, proceed normally
+end
+
+local function isVisible(o)
+    local c = o
+    while c and c:IsA("GuiObject") do
+        if not c.Visible then return false end
+        c = c.Parent
+    end
+    return o.AbsoluteSize.X > 0
+end
+
+local function clickLeaveButton()
+    print("Waiting for Leave_2 button...")
+    local maxWait = 30
+    local elapsed = 0
+    
+    while elapsed < maxWait do
+        local b = pGui:FindFirstChild("Interface")
+        if b then
+            b = b:FindFirstChild("Rewards")
+            if b then
+                b = b:FindFirstChild("Main")
+                if b then
+                    b = b:FindFirstChild("Info")
+                    if b then
+                        b = b:FindFirstChild("Main")
+                        if b then
+                            b = b:FindFirstChild("Buttons")
+                            if b then
+                                b = b:FindFirstChild("Leave_2")
+                                if b and isVisible(b) then
+                                    print("Found Leave_2, spam clicking...")
+                                    local clickCount = math.random(2, 7)
+                                    print("Clicking " .. clickCount .. " times")
+                                    
+                                    for i = 1, clickCount do
+                                        local x = b.AbsolutePosition.X + (b.AbsoluteSize.X / 2)
+                                        local y = b.AbsolutePosition.Y + (b.AbsoluteSize.Y / 2) + 58
+                                        VirtualInputManager:SendMouseButtonEvent(x, y, 0, true, game, 1)
+                                        task.wait(0.05)
+                                        VirtualInputManager:SendMouseButtonEvent(x, y, 0, false, game, 1)
+                                        task.wait(0.1)
+                                        print("Click " .. i .. " at: " .. x .. ", " .. y)
+                                    end
+                                    print("Leave sequence completed")
+                                    return
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+        task.wait(0.5)
+        elapsed = elapsed + 0.5
+    end
+    
+    print("Timeout: Leave_2 button did not appear within " .. maxWait .. " seconds")
+end
+
+-- Check if boost has expired
+local boostStillActive = checkAndLoadBoostTimer()
+if not boostStillActive then
+    clickLeaveButton()
+end
+
+print("--- Part 3 Completed ---")
