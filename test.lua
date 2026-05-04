@@ -285,11 +285,12 @@ task.wait(1)
 
 local missionsFolder = pGui:WaitForChild("Interface"):WaitForChild("Missions")
 local promptSelection = missionsFolder:WaitForChild("Prompt"):WaitForChild("Selection")
-local missionBtn = promptSelection:WaitForChild("Missions")
-local missionMainUI = missionsFolder:WaitForChild("Missions") -- UI sẽ hiện ra sau khi click
+local missionsElement = promptSelection:WaitForChild("Missions")
+local interactBtn = missionsElement:WaitForChild("Interact")
+local targetUI = missionsFolder:WaitForChild("Missions"):WaitForChild("Main"):WaitForChild("Info"):WaitForChild("Main") -- UI sẽ hiện ra sau khi click
 
--- Click cho đến khi bảng MissionMainUI hiện ra
-humanClick(missionBtn, missionMainUI)
+-- Click vào Interact button cho đến khi targetUI hiện ra
+humanClick(interactBtn, targetUI)
 
 local mapsContainer = missionsFolder.Missions.Main.Maps.Maps
 local mapList = {"Chapel_Missions", "Docks_Missions", "Forest_Missions", "Outskirts_Missions", "Shiganshina_Missions", "Stohess_Missions", "Trost_Missions", "Utgard_Missions"}
