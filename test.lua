@@ -135,7 +135,7 @@ end -- End of Part 1
 
 -- phan 2 
 if p == 14916516914 then
-task.wait(4)
+task.wait(2)
 
 local Players = game:GetService("Players")
 local VirtualInputManager = game:GetService("VirtualInputManager")
@@ -249,19 +249,31 @@ if not boostStillActive then
     return
 end 
 
-local function humanClick(obj)
+local function humanClick(obj, checkTarget)
     if obj and obj:IsA("GuiObject") and obj.Visible and obj.AbsoluteSize.X > 0 then
-        local x = obj.AbsolutePosition.X + (obj.AbsoluteSize.X / 2)
-        local y = obj.AbsolutePosition.Y + (obj.AbsoluteSize.Y / 2) + Y_OFFSET
-        
-        VirtualInputManager:SendMouseMoveEvent(x, y, game)
-        task.wait(0.1)
-        VirtualInputManager:SendMouseButtonEvent(x, y, 0, true, game, 1)
-        task.wait(0.05)
-        VirtualInputManager:SendMouseButtonEvent(x, y, 0, false, game, 1)
-        
-        task.wait(0.15)
-        return true
+        local attempts = 0
+        -- Click tối đa 5 lần hoặc cho đến khi UI mục tiêu hiện ra
+        while attempts < 5 do
+            local x = obj.AbsolutePosition.X + (obj.AbsoluteSize.X / 2)
+            local y = obj.AbsolutePosition.Y + (obj.AbsoluteSize.Y / 2) + Y_OFFSET
+            
+            -- Di chuyển và Click
+            VirtualInputManager:SendMouseMoveEvent(x, y, game)
+            task.wait(0.1)
+            VirtualInputManager:SendMouseButtonEvent(x, y, 0, true, game, 1)
+            task.wait(0.05)
+            VirtualInputManager:SendMouseButtonEvent(x, y, 0, false, game, 1)
+            
+            task.wait(0.5) -- Đợi UI phản hồi
+            
+            -- Nếu có checkTarget (ví dụ: bảng Mission hiện ra), thì dừng click
+            if not checkTarget or (checkTarget and checkTarget.Visible) then
+                return true
+            end
+            
+            attempts = attempts + 1
+            warn("Click thu lai lan " .. attempts)
+        end
     end
     return false
 end
@@ -272,7 +284,12 @@ end
 task.wait(1)
 
 local missionsFolder = pGui:WaitForChild("Interface"):WaitForChild("Missions")
-humanClick(missionsFolder:WaitForChild("Prompt"):WaitForChild("Selection"):WaitForChild("Missions"))
+local promptSelection = missionsFolder:WaitForChild("Prompt"):WaitForChild("Selection")
+local missionBtn = promptSelection:WaitForChild("Missions")
+local missionMainUI = missionsFolder:WaitForChild("Missions") -- UI sẽ hiện ra sau khi click
+
+-- Click cho đến khi bảng MissionMainUI hiện ra
+humanClick(missionBtn, missionMainUI)
 
 local mapsContainer = missionsFolder.Missions.Main.Maps.Maps
 local mapList = {"Chapel_Missions", "Docks_Missions", "Forest_Missions", "Outskirts_Missions", "Shiganshina_Missions", "Stohess_Missions", "Trost_Missions", "Utgard_Missions"}
@@ -283,6 +300,10 @@ for i = 1, 30 do
         local map = mapsContainer:FindFirstChild(name)
         if map and map:FindFirstChild("Boost") then
             boostElement = map:FindFirstChild("Boost")
+            humanClick(map)
+            task.wait(0.2)
+            humanClick(map)
+            task.wait(0.2)
             humanClick(map)
             boostFound = true
             break
