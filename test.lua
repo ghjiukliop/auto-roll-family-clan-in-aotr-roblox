@@ -1,6 +1,6 @@
 -- [[ CONFIGURATION ]] --
 local WEBHOOK_URL = _G.WEBHOOK or _G.WEBHOOK_URL or ""
-local TARGET_CLANS = _G.CLAN or _G.TARGET_CLANS or {"Helos", "Fritz"}
+local TARGET_CLANS = _G.CLAN or _G.TARGET_CLANS or {"ACKERMAN", "YEAGER"}
 local DELAY_BETWEEN_ROLLS = _G.SPEED or _G.DELAY_BETWEEN_ROLLS or 1.5
 
 -- [[ SERVICES ]] --
@@ -47,7 +47,7 @@ local function parseInfo()
     -- Lấy số lượt Roll từ: "ROLL (3,403)"
     local rText = rollTitle.Text or ""
     local rollsStr = rText:match("%(([%d,]+)%)")
-    local rollsNum = rollsStr and tonumber(rollsStr:gsub(",", "")) or nil
+    local rollsNum = rollsStr and tonumber((rollsStr:gsub(",", ""))) or nil
     
     return clan:upper():gsub("%s+", ""), rarity:upper(), rollsNum, rText
 end
