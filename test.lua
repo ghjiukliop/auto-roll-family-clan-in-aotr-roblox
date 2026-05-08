@@ -10,7 +10,7 @@ local vim = game:GetService("VirtualInputManager")
 local http = game:GetService("HttpService")
 
 -- [[ UI ELEMENTS ]] --
--- Đường dẫn chính xác theo yêu cầu của bạn
+-- Đường dẫn đã sửa theo yêu cầu của bạn
 local rollTitle = pGui:WaitForChild("Interface"):WaitForChild("Customisation")
     :WaitForChild("Family"):WaitForChild("Buttons_2"):WaitForChild("Roll"):WaitForChild("Title")
 
@@ -39,15 +39,21 @@ local function smartClick(obj)
 end
 
 local function parseInfo()
-    -- Tách Clan Name và Rarity từ: "Fritz (Legendary)"
+    -- Tách Clan Name và Rarity
     local fText = familyTitle.Text or ""
     local clan = fText:match("^(.-)%s*%(") or fText
     local rarity = fText:match("%((.-)%)") or "COMMON"
     
-    -- Lấy số lượt Roll từ: "ROLL (3,403)"
+    -- Lấy số lượt Roll
     local rText = rollTitle.Text or ""
     local rollsStr = rText:match("%(([%d,]+)%)")
-    local rollsNum = rollsStr and tonumber((rollsStr:gsub(",", ""))) or nil
+    
+    local rollsNum = nil
+    if rollsStr then
+        -- Tách gsub ra để tránh lỗi truyền tham số thứ 2 vào tonumber
+        local cleanRolls = rollsStr:gsub(",", "")
+        rollsNum = tonumber(cleanRolls)
+    end
     
     return clan:upper():gsub("%s+", ""), rarity:upper(), rollsNum, rText
 end
@@ -90,14 +96,13 @@ while true do
         break
     end
 
-    -- 3. KIỂM TRA HẾT LƯỢT (Chỉ dừng khi text chứa chữ ROLL và số là 0)
+    -- 3. KIỂM TRA HẾT LƯỢT
     if rollsLeft == 0 and rawRollText:find("ROLL") then
         warn("❌ Hết lượt Roll!")
         break
     end
 
-    -- 4. XỬ LÝ WARNING PROMPT (Yes/No)
-    -- Nếu trúng Epic/Legendary không phải mục tiêu hoặc bảng Warning hiện lên
+    -- 4. XỬ LÝ WARNING PROMPT
     if isVisible(warningPrompt.Main) or rarity:find("EPIC") or rarity:find("LEGEND") then
         local yesBtn = warningPrompt.Main:FindFirstChild("Yes")
         if yesBtn and isVisible(yesBtn) then
@@ -108,10 +113,10 @@ while true do
     end
 
     -- 5. THỰC HIỆN ROLL
-    -- Nếu text đang là "." ".." "..." (đang roll) thì đợi, không bấm tiếp
+    -- Nếu đang trong hiệu ứng roll (hiện dấu chấm ...) thì đợi
     if not rawRollText:find("%.%.%.") then
         print("🎲 Rolling... (Clan: " .. clanName .. " | Lượt: " .. (rollsLeft or "...") .. ")")
-        smartClick(rollTitle) -- Click thẳng vào Title của Button như bạn yêu cầu
+        smartClick(rollTitle) 
     end
 
     task.wait(DELAY_BETWEEN_ROLLS)
