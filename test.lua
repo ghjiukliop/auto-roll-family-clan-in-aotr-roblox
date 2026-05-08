@@ -1,326 +1,472 @@
--- === CONFIGURATION ===
--- Các biến có thể được set từ global scope (_G), hoặc sử dụng default values
-local SLOT = _G.SLOT or "A"
-local WEBHOOK_URL = _G.WEBHOOK_URL or ""
-local TARGET_CLANS = _G.TARGET_CLANS or {"Fritz", "Helos"}
-local DELAY_BETWEEN_ROLLS = _G.DELAY_BETWEEN_ROLLS or 0.5 -- Thời gian chờ giữa mỗi lần roll (giây)
+-- === AUTO ROLL FAMILY SCRIPT WITH GUI ===
+-- Script for rolling family with customizable settings
+-- Place ID cần match với game của bạn
 
--- === STATE FILE ===
-local STATE_FILE = "autoroll_state.txt"
+local Players = game:GetService("Players")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local HttpService = game:GetService("HttpService")
+local RunService = game:GetService("RunService")
 
--- Lưu trạng thái hiện tại
-local function saveState(step)
-    pcall(function()
-        writefile(STATE_FILE, tostring(step))
-    end)
-    print("💾 Lưu trạng thái: Bước " .. step)
-end
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+local Y_OFFSET = 58
 
--- Lấy trạng thái đã lưu
-local function loadState()
-    local success, state = pcall(function()
-        return readfile(STATE_FILE)
-    end)
-    if success and state then
-        return tonumber(state) or 1
-    end
-    return 1 -- Default bước 1
-end
+-- === DEFAULT CONFIGURATION ===
+local CONFIG = {
+    SLOT = "A",
+    WEBHOOK = "",
+    CLAN = "",
+    DELAY_BETWEEN_ROLLS = 0.3,
+    DEBUG = true
+}
 
--- === SERVICES ===
-local player = game:GetService("Players").LocalPlayer
-local pGui = player:WaitForChild("PlayerGui")
-local vim = game:GetService("VirtualInputManager")
-local http = game:GetService("HttpService")
+-- === GUI VARIABLES ===
+local guiOpen = true
+local isRolling = false
+local rollsRemaining = 0
+local currentFamily = ""
 
 -- === HELPER FUNCTIONS ===
+local function log(message)
+    if CONFIG.DEBUG then
+        print("[AutoRoll] " .. message)
+    end
+end
 
--- Kiểm tra object có visible không (kiểm tra cả ancestors)
 local function isVisible(obj)
     if not obj or not obj:IsA("GuiObject") then return false end
-    
     local current = obj
     while current and current:IsA("GuiObject") do
         if not current.Visible then return false end
-        if current:IsA("ScrollingFrame") or current:IsA("TextBox") or current:IsA("TextButton") then
-            if current.Active == false then return false end
-        end
         current = current.Parent
     end
-    
-    -- Kiểm tra ScreenGui
     local screenGui = obj:FindFirstAncestorOfClass("ScreenGui")
     if screenGui and not screenGui.Enabled then return false end
-    
-    -- Kiểm tra size hợp lệ
     return obj.AbsoluteSize.X > 0 and obj.AbsoluteSize.Y > 0
 end
 
--- Click thông thường (đơn giản)
-local function click(obj)
-    if obj and isVisible(obj) then
-        local x = obj.AbsolutePosition.X + (obj.AbsoluteSize.X / 2)
-        local y = obj.AbsolutePosition.Y + (obj.AbsoluteSize.Y / 2) + 58 -- Offset cho Roblox Topbar
-        vim:SendMouseButtonEvent(x, y, 0, true, game, 1)
+local function click(btn)
+    if btn and isVisible(btn) then
+        local x = btn.AbsolutePosition.X + (btn.AbsoluteSize.X / 2)
+        local y = btn.AbsolutePosition.Y + (btn.AbsoluteSize.Y / 2) + Y_OFFSET
+        VirtualInputManager:SendMouseButtonEvent(x, y, 0, true, game, 1)
         task.wait(0.05)
-        vim:SendMouseButtonEvent(x, y, 0, false, game, 1)
+        VirtualInputManager:SendMouseButtonEvent(x, y, 0, false, game, 1)
         return true
     end
     return false
 end
 
--- Smart Click với retry mechanism
-local function smartClick(obj, maxRetries, delayBetweenRetries)
-    maxRetries = maxRetries or 5
-    delayBetweenRetries = delayBetweenRetries or 0.3
-    
-    for attempt = 1, maxRetries do
-        if click(obj) then
-            print("✅ SmartClick thành công (lần " .. attempt .. ")")
-            return true
-        end
-        
-        print("⏳ SmartClick lần " .. attempt .. " thất bại, thử lại...")
-        task.wait(delayBetweenRetries)
-    end
-    
-    print("❌ SmartClick thất bại sau " .. maxRetries .. " lần thử")
-    return false
+local function pressKey(keyCode)
+    VirtualInputManager:SendKeyEvent(true, keyCode, false, game)
+    task.wait(0.05)
+    VirtualInputManager:SendKeyEvent(false, keyCode, false, game)
 end
 
--- Đợi object visible với timeout
-local function waitForElementVisible(obj, maxWaitTime)
-    maxWaitTime = maxWaitTime or 10
-    local startTime = tick()
-    
-    while tick() - startTime < maxWaitTime do
-        if obj and isVisible(obj) then
-            print("✅ Element visible")
-            return obj
-        end
-        task.wait(0.2)
-    end
-    
-    print("❌ Timeout: Element không visible sau " .. maxWaitTime .. "s")
-    return nil
+local function getCleanName(text)
+    -- Xóa rarity info như (Common), (Rare), (Legend), etc
+    local cleaned = text:gsub("%s*%b()", ""):gsub("%s+", " "):strip()
+    return cleaned
 end
 
--- Lấy element từ path và đợi visible
-local function waitAndGetElement(parent, pathArray, maxWaitTime)
-    maxWaitTime = maxWaitTime or 10
-    local startTime = tick()
-    local current = parent
-    
-    -- Lấy element từ path
-    for _, name in ipairs(pathArray) do
-        local childWaitTime = maxWaitTime - (tick() - startTime)
-        if childWaitTime <= 0 then
-            print("❌ Timeout: Không tìm thấy " .. name)
-            return nil
-        end
-        
-        current = current:WaitForChild(name, childWaitTime)
-        if not current then
-            print("❌ Timeout: Không tìm thấy " .. name)
-            return nil
-        end
-    end
-    
-    -- Đợi element visible
-    return waitForElementVisible(current, maxWaitTime - (tick() - startTime))
-end
-
--- Click element từ path với retry
-local function clickWithRetry(parent, pathArray, maxWaitTime, maxRetries, delayBetweenRetries)
-    maxWaitTime = maxWaitTime or 10
-    maxRetries = maxRetries or 3
-    delayBetweenRetries = delayBetweenRetries or 0.5
-    
-    print("🔍 Đang tìm element từ path...")
-    local element = waitAndGetElement(parent, pathArray, maxWaitTime)
-    
-    if not element then
-        print("❌ Không tìm thấy element")
-        return false
-    end
-    
-    print("🖱️ Đang click element...")
-    return smartClick(element, maxRetries, delayBetweenRetries)
-end
-
-local function sendWebhook(clanFound, rollsLeft)
-    -- Kiểm tra webhook URL có hợp lệ không
-    if not WEBHOOK_URL or WEBHOOK_URL == "" then
-        print("⚠️ Webhook URL chưa được cấu hình!")
+local function sendWebhook(success, message)
+    if CONFIG.WEBHOOK == "" or CONFIG.WEBHOOK == nil then
+        log("⚠️ Webhook chưa được cấu hình")
         return
     end
     
     local data = {
-        ["content"] = "🎉 **Auto Roll Success!**",
+        ["content"] = success and "🎉 **Auto Roll Success!**" or "❌ **Auto Roll Failed**",
         ["embeds"] = {{
-            ["title"] = "Clan Found: " .. clanFound,
-            ["description"] = "Slot: " .. SLOT .. "\nRemaining Rolls: " .. rollsLeft,
-            ["color"] = 65280 -- Green
+            ["title"] = success and ("Tìm được: " .. currentFamily) or "Lỗi",
+            ["description"] = message,
+            ["color"] = success and 65280 or 16711680,
+            ["fields"] = {
+                {["name"] = "Slot", ["value"] = CONFIG.SLOT, ["inline"] = true},
+                {["name"] = "Rolls Còn Lại", ["value"] = tostring(rollsRemaining), ["inline"] = true},
+                {["name"] = "Clan Tìm", ["value"] = CONFIG.CLAN, ["inline"] = true}
+            }
         }}
     }
+    
     pcall(function()
-        http:PostAsync(WEBHOOK_URL, http:JSONEncode(data))
+        HttpService:PostAsync(CONFIG.WEBHOOK, HttpService:JSONEncode(data))
     end)
 end
 
-local function getCleanClanName(text)
-    -- Xóa phần (Common), (Rare),... và khoảng trắng dư thừa
-    local name = text:gsub("%s*%b()", ""):upper():gsub("%s+", "")
-    return name
+-- === CREATE GUI ===
+local function createGui()
+    local screenGui = Instance.new("ScreenGui")
+    screenGui.Name = "AutoRollGui"
+    screenGui.ResetOnSpawn = false
+    screenGui.Parent = playerGui
+    
+    -- Main Frame
+    local mainFrame = Instance.new("Frame")
+    mainFrame.Name = "MainFrame"
+    mainFrame.Size = UDim2.new(0, 350, 0, 400)
+    mainFrame.Position = UDim2.new(0.5, -175, 0.5, -200)
+    mainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+    mainFrame.BorderColor3 = Color3.fromRGB(100, 100, 100)
+    mainFrame.BorderSizePixel = 2
+    mainFrame.Parent = screenGui
+    
+    -- Title
+    local title = Instance.new("TextLabel")
+    title.Name = "Title"
+    title.Size = UDim2.new(1, 0, 0, 40)
+    title.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    title.TextColor3 = Color3.fromRGB(255, 255, 255)
+    title.TextSize = 18
+    title.Font = Enum.Font.GothamBold
+    title.Text = "🎲 AUTO ROLL FAMILY"
+    title.Parent = mainFrame
+    
+    local padding = 10
+    local yOffset = 50
+    local inputHeight = 30
+    
+    -- SLOT Input
+    local slotLabel = Instance.new("TextLabel")
+    slotLabel.Size = UDim2.new(1, -20, 0, 20)
+    slotLabel.Position = UDim2.new(0, 10, 0, yOffset)
+    slotLabel.BackgroundTransparency = 1
+    slotLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+    slotLabel.TextSize = 12
+    slotLabel.Font = Enum.Font.Gotham
+    slotLabel.Text = "SLOT (A/B/C)"
+    slotLabel.Parent = mainFrame
+    
+    local slotInput = Instance.new("TextBox")
+    slotInput.Name = "SlotInput"
+    slotInput.Size = UDim2.new(1, -20, 0, inputHeight)
+    slotInput.Position = UDim2.new(0, 10, 0, yOffset + 20)
+    slotInput.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    slotInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+    slotInput.TextSize = 14
+    slotInput.Font = Enum.Font.Gotham
+    slotInput.Text = CONFIG.SLOT
+    slotInput.ClearTextOnFocus = false
+    slotInput.Parent = mainFrame
+    
+    yOffset = yOffset + 60
+    
+    -- CLAN Input
+    local clanLabel = Instance.new("TextLabel")
+    clanLabel.Size = UDim2.new(1, -20, 0, 20)
+    clanLabel.Position = UDim2.new(0, 10, 0, yOffset)
+    clanLabel.BackgroundTransparency = 1
+    clanLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+    clanLabel.TextSize = 12
+    clanLabel.Font = Enum.Font.Gotham
+    clanLabel.Text = "CLAN NAME (vd: BLOUSE, BOZADO)"
+    clanLabel.Parent = mainFrame
+    
+    local clanInput = Instance.new("TextBox")
+    clanInput.Name = "ClanInput"
+    clanInput.Size = UDim2.new(1, -20, 0, inputHeight)
+    clanInput.Position = UDim2.new(0, 10, 0, yOffset + 20)
+    clanInput.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    clanInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+    clanInput.TextSize = 14
+    clanInput.Font = Enum.Font.Gotham
+    clanInput.Text = CONFIG.CLAN
+    clanInput.ClearTextOnFocus = false
+    clanInput.Parent = mainFrame
+    
+    yOffset = yOffset + 60
+    
+    -- WEBHOOK Input
+    local webhookLabel = Instance.new("TextLabel")
+    webhookLabel.Size = UDim2.new(1, -20, 0, 20)
+    webhookLabel.Position = UDim2.new(0, 10, 0, yOffset)
+    webhookLabel.BackgroundTransparency = 1
+    webhookLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+    webhookLabel.TextSize = 12
+    webhookLabel.Font = Enum.Font.Gotham
+    webhookLabel.Text = "WEBHOOK URL"
+    webhookLabel.Parent = mainFrame
+    
+    local webhookInput = Instance.new("TextBox")
+    webhookInput.Name = "WebhookInput"
+    webhookInput.Size = UDim2.new(1, -20, 0, inputHeight)
+    webhookInput.Position = UDim2.new(0, 10, 0, yOffset + 20)
+    webhookInput.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    webhookInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+    webhookInput.TextSize = 12
+    webhookInput.Font = Enum.Font.Gotham
+    webhookInput.Text = CONFIG.WEBHOOK
+    webhookInput.ClearTextOnFocus = false
+    webhookInput.Parent = mainFrame
+    
+    yOffset = yOffset + 60
+    
+    -- START Button
+    local startBtn = Instance.new("TextButton")
+    startBtn.Name = "StartButton"
+    startBtn.Size = UDim2.new(0.45, 0, 0, 40)
+    startBtn.Position = UDim2.new(0, 10, 0, yOffset)
+    startBtn.BackgroundColor3 = Color3.fromRGB(50, 200, 50)
+    startBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    startBtn.TextSize = 14
+    startBtn.Font = Enum.Font.GothamBold
+    startBtn.Text = "START"
+    startBtn.Parent = mainFrame
+    
+    -- STOP Button
+    local stopBtn = Instance.new("TextButton")
+    stopBtn.Name = "StopButton"
+    stopBtn.Size = UDim2.new(0.45, 0, 0, 40)
+    stopBtn.Position = UDim2.new(0.55, 0, 0, yOffset)
+    stopBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+    stopBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    stopBtn.TextSize = 14
+    stopBtn.Font = Enum.Font.GothamBold
+    stopBtn.Text = "STOP"
+    stopBtn.Parent = mainFrame
+    
+    yOffset = yOffset + 50
+    
+    -- Status Label
+    local statusLabel = Instance.new("TextLabel")
+    statusLabel.Name = "StatusLabel"
+    statusLabel.Size = UDim2.new(1, -20, 0, 60)
+    statusLabel.Position = UDim2.new(0, 10, 0, yOffset)
+    statusLabel.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    statusLabel.TextColor3 = Color3.fromRGB(150, 255, 150)
+    statusLabel.TextSize = 11
+    statusLabel.Font = Enum.Font.Gotham
+    statusLabel.Text = "📍 Status: Ready\n⏳ Waiting..."
+    statusLabel.TextWrapped = true
+    statusLabel.Parent = mainFrame
+    
+    -- Button Functions
+    startBtn.MouseButton1Click:Connect(function()
+        CONFIG.SLOT = slotInput.Text:upper()
+        CONFIG.CLAN = clanInput.Text:upper()
+        CONFIG.WEBHOOK = webhookInput.Text
+        
+        if CONFIG.CLAN == "" then
+            statusLabel.Text = "❌ Clan chưa nhập!"
+            return
+        end
+        
+        isRolling = true
+        startBtn.Enabled = false
+        log("🚀 Bắt đầu Auto Roll cho: " .. CONFIG.CLAN)
+        startAutoRoll(statusLabel)
+    end)
+    
+    stopBtn.MouseButton1Click:Connect(function()
+        isRolling = false
+        startBtn.Enabled = true
+        statusLabel.Text = "⛔ Đã dừng"
+        log("⛔ Đã dừng Auto Roll")
+    end)
+    
+    return screenGui, statusLabel
 end
 
--- === MAIN WORKFLOW ===
-print("🚀 Bắt đầu Auto Roll Script")
-
--- Load trạng thái đã lưu
-local currentStep = loadState()
-print("📍 Tiếp tục từ bước: " .. currentStep)
-
--- 1. Chọn Slot
-if currentStep <= 1 then
-    print("--- Bước 1: Chọn Slot " .. SLOT .. " ---")
-    local slotPath = {"Interface", "Title_Screen", "Slots", SLOT, "Select_" .. SLOT}
-    if not clickWithRetry(pGui, slotPath, 15, 3, 0.5) then
-        warn("❌ Không thể click Slot " .. SLOT)
+-- === AUTO ROLL WORKFLOW ===
+function startAutoRoll(statusLabel)
+    task.wait(1)
+    
+    -- Step 1: Click vào slot
+    statusLabel.Text = "📍 Status: Đang chọn Slot " .. CONFIG.SLOT
+    
+    local interface = playerGui:WaitForChild("Interface", 30)
+    if not interface then
+        log("❌ Interface không tìm thấy")
         return
     end
-    task.wait(1)
-    saveState(2)
-    currentStep = 2
-end
-
--- 2. Click Customisation
-if currentStep <= 2 then
-    print("--- Bước 2: Click Customisation ---")
-    if not clickWithRetry(pGui, {"Interface", "Title_Screen", "Buttons", "Customisation"}, 15, 3, 0.5) then
-        warn("❌ Không thể click Customisation")
-        return
-    end
-    task.wait(1)
-    saveState(3)
-    currentStep = 3
-end
-
--- 3. Click Family tab
-if currentStep <= 3 then
-    print("--- Bước 3: Click Family Tab ---")
-    if not clickWithRetry(pGui, {"Interface", "Customisation", "Family"}, 15, 3, 0.5) then
-        warn("❌ Không thể click Family Tab")
-        return
-    end
-    task.wait(1)
-    saveState(4)
-    currentStep = 4
-end
-
--- 4. Lấy references cho Roll button và Family name
-if currentStep <= 4 then
-    print("--- Bước 4: Lấy elements cho Roll Loop ---")
-    local rollElement = waitAndGetElement(pGui, {"Interface", "Customisation", "Family", "Buttons_2", "Roll"}, 10)
-    local rollTitle = rollElement and rollElement:FindFirstChild("Title")
-    local familyElement = waitAndGetElement(pGui, {"Interface", "Customisation", "Family", "Family"}, 10)
-    local familyTitle = familyElement and familyElement:FindFirstChild("Title")
     
-    if not rollTitle or not familyTitle then
-        warn("❌ Không tìm thấy Roll hoặc Family elements")
-        return
-    end
-    task.wait(1)
-    saveState(5)
-    currentStep = 5
-end
-
--- 5. Bắt đầu Roll Loop (không task.wait bước này)
-print("--- Bước 5: Bắt đầu Roll Loop ---")
-
--- Lấy lại elements nếu cần
-local rollElement = waitAndGetElement(pGui, {"Interface", "Customisation", "Family", "Buttons_2", "Roll"}, 10)
-local rollTitle = rollElement and rollElement:FindFirstChild("Title")
-local familyElement = waitAndGetElement(pGui, {"Interface", "Customisation", "Family", "Family"}, 10)
-local familyTitle = familyElement and familyElement:FindFirstChild("Title")
-
--- Roll Loop với Event-driven polling
-local rollAttempt = 0
-local maxRollAttempts = 500
-local lastFamilyName = ""
-local pollInterval = 0.15 -- Interval check UI (không cố định, tối ưu)
-
--- Lưu state bước 5 (reroll)
-saveState(5)
-
-while rollAttempt < maxRollAttempts do
-    -- Kiểm tra hiện trạng UI
-    if not isVisible(rollTitle) or not isVisible(familyTitle) then
-        print("⚠️ Roll elements không còn visible, dừng")
-        break
-    end
-    
-    -- Lấy text hiện tại
-    local currentText = familyTitle.Text or "" -- Ví dụ: "FRITZ (Rare)"
-    local rollsText = rollTitle.Text or "" -- Ví dụ: "ROLL (3,967)"
-    
-    -- Parse clan name (xóa rarity)
-    local clanName = getCleanClanName(currentText)
-    local rollsRemaining = rollsText:match("%(([%d,]+)%)") or "0"
-    
-    -- Chỉ log khi family thay đổi (tối ưu console spam)
-    if clanName ~= lastFamilyName then
-        print("👨‍👩‍👧 Family: " .. clanName .. " | Rolls: " .. rollsRemaining .. " | Attempt: " .. rollAttempt)
-        lastFamilyName = clanName
-    end
-    
-    -- Kiểm tra xem có trùng target clan không
-    local found = false
-    for _, target in ipairs(TARGET_CLANS) do
-        if clanName == target:upper() then
-            found = true
-            break
+    local titleScreen = interface:FindFirstChild("Title_Screen")
+    if titleScreen then
+        local slotBtn = titleScreen:FindFirstChild("Slots")
+        if slotBtn then
+            slotBtn = slotBtn:FindFirstChild(CONFIG.SLOT)
+            if slotBtn then
+                slotBtn = slotBtn:FindFirstChild("Select_" .. CONFIG.SLOT)
+                if click(slotBtn) then
+                    log("✅ Clicked Slot " .. CONFIG.SLOT)
+                    task.wait(2)
+                end
+            end
         end
     end
     
-    if found then
-        print("🎉 🎉 ĐÃ TÌM THẤY CLAN: " .. clanName .. " 🎉 🎉")
-        sendWebhook(clanName, rollsRemaining)
-        -- Xóa state khi thành công
-        pcall(function() delfile(STATE_FILE) end)
-        break
-    end
+    -- Step 2: Đợi đến khi vào game và tìm Customization
+    statusLabel.Text = "📍 Status: Đang tìm Customization"
+    task.wait(2)
     
-    -- Kiểm tra hết roll
-    if rollsRemaining == "0" then
-        warn("⚠️ ⚠️ ĐÃ HẾT LƯỢT ROLL ⚠️ ⚠️")
-        pcall(function() delfile(STATE_FILE) end)
-        break
-    end
-    
-    -- Smart Click Roll button
-    if isVisible(rollElement) then
-        smartClick(rollElement, 2, 0.2) -- 2 retries nếu click thất bại
-        rollAttempt = rollAttempt + 1
-        
-        -- Polling thông minh: đợi theo delay config
-        task.wait(DELAY_BETWEEN_ROLLS)
-    else
-        print("⚠️ Roll element không visible, thử lại...")
+    local customBtn = nil
+    local startTime = tick()
+    while isRolling and (tick() - startTime) < 60 do
+        local ui = playerGui:FindFirstChild("Interface")
+        if ui then
+            -- Tìm nút Customization
+            local function findButton(parent, name)
+                if parent:IsA("GuiObject") and parent.Name:find(name) then
+                    return parent
+                end
+                for _, child in pairs(parent:GetChildren()) do
+                    local result = findButton(child, name)
+                    if result then return result end
+                end
+                return nil
+            end
+            
+            customBtn = findButton(ui, "Customiz")
+            if customBtn and isVisible(customBtn) then
+                break
+            end
+        end
         task.wait(0.5)
     end
+    
+    if customBtn and click(customBtn) then
+        log("✅ Opened Customization")
+        task.wait(2)
+    else
+        statusLabel.Text = "❌ Customization không tìm thấy"
+        isRolling = false
+        return
+    end
+    
+    -- Step 3: Tìm và click vào Family
+    statusLabel.Text = "📍 Status: Đang tìm Family"
+    
+    local familyBtn = nil
+    startTime = tick()
+    while isRolling and (tick() - startTime) < 30 do
+        local ui = playerGui:FindFirstChild("Interface")
+        if ui then
+            local function findFamilyButton(parent)
+                if parent:IsA("TextButton") or parent:IsA("TextLabel") then
+                    local text = parent.Text or ""
+                    if text:find("Family") or text:find("family") then
+                        return parent
+                    end
+                end
+                for _, child in pairs(parent:GetChildren()) do
+                    local result = findFamilyButton(child)
+                    if result then return result end
+                end
+                return nil
+            end
+            
+            familyBtn = findFamilyButton(ui)
+            if familyBtn and isVisible(familyBtn) then
+                break
+            end
+        end
+        task.wait(0.3)
+    end
+    
+    if familyBtn and click(familyBtn) then
+        log("✅ Opened Family Section")
+        task.wait(2)
+    else
+        statusLabel.Text = "❌ Family button không tìm thấy"
+        isRolling = false
+        return
+    end
+    
+    -- Step 4: Bắt đầu Roll
+    statusLabel.Text = "📍 Status: Bắt đầu spam Roll"
+    
+    local rollAttempts = 0
+    local maxAttempts = 1000
+    
+    while isRolling and rollAttempts < maxAttempts do
+        -- Tìm ROLL button
+        local rollBtn = nil
+        local familyText = nil
+        
+        local ui = playerGui:FindFirstChild("Interface")
+        if ui then
+            local function findRollButton(parent)
+                if parent:IsA("TextButton") then
+                    local text = parent.Text or ""
+                    if text:find("ROLL") or text:find("Roll") then
+                        return parent
+                    end
+                end
+                for _, child in pairs(parent:GetChildren()) do
+                    local result = findRollButton(child)
+                    if result then return result end
+                end
+                return nil
+            end
+            
+            local function findFamilyText(parent)
+                if parent:IsA("TextLabel") or parent:IsA("TextButton") then
+                    local text = parent.Text or ""
+                    -- Tìm text button hiển thị family name
+                    if text ~= "" and not text:find("ROLL") and parent.AbsoluteSize.Y > 20 then
+                        return parent
+                    end
+                end
+                for _, child in pairs(parent:GetChildren()) do
+                    local result = findFamilyText(child)
+                    if result then return result end
+                end
+                return nil
+            end
+            
+            rollBtn = findRollButton(ui)
+            familyText = findFamilyText(ui)
+        end
+        
+        -- Extract số lần roll còn lại từ ROLL(XXX)
+        if rollBtn then
+            local rollText = rollBtn.Text or ""
+            local matches = rollText:match("ROLL%s*%((%d+)%)")
+            if matches then
+                rollsRemaining = tonumber(matches)
+            end
+        end
+        
+        -- Check family name
+        if familyText then
+            currentFamily = getCleanName(familyText.Text or "")
+            
+            -- Nếu tìm được family muốn
+            if currentFamily:upper():find(CONFIG.CLAN:upper()) then
+                statusLabel.Text = "✅ Status: Tìm được " .. currentFamily .. "!"
+                log("🎉 Tìm được: " .. currentFamily)
+                sendWebhook(true, "Tìm được family: " .. currentFamily .. "\nTrong " .. rollAttempts .. " lần roll")
+                isRolling = false
+                return
+            end
+        end
+        
+        -- Click Roll button
+        if rollBtn and click(rollBtn) then
+            rollAttempts = rollAttempts + 1
+            statusLabel.Text = "📍 Status: Rolling... (" .. rollAttempts .. ")\n👨‍👩‍👧 Current: " .. currentFamily
+            log("🎲 Roll #" .. rollAttempts .. " - Family: " .. currentFamily)
+            
+            task.wait(CONFIG.DELAY_BETWEEN_ROLLS)
+        else
+            task.wait(0.5)
+        end
+    end
+    
+    if rollAttempts >= maxAttempts then
+        statusLabel.Text = "⚠️ Đạt giới hạn roll (" .. maxAttempts .. ")"
+        sendWebhook(false, "Đạt giới hạn " .. maxAttempts .. " lần roll mà chưa tìm được " .. CONFIG.CLAN)
+    end
+    
+    isRolling = false
 end
 
-if rollAttempt >= maxRollAttempts then
-    warn("⚠️ ⚠️ ĐẠT GIỚI HẠN ROLL (" .. maxRollAttempts .. ") ⚠️ ⚠️")
+-- === MAIN INITIALIZATION ===
+if not game:IsLoaded() then
+    game.Loaded:Wait()
 end
 
-print("--- Script kết thúc ---")
-print("📊 Tổng cộng: " .. rollAttempt .. " lần roll")
-
--- Xóa trạng thái khi hoàn thành
-pcall(function()
-    delfile(STATE_FILE)
-    print("✅ Xóa state file - script hoàn thành")
-end)
-
+task.wait(2)
+local screenGui, statusLabel = createGui()
+log("🎮 Auto Roll Family GUI Created")
+statusLabel.Text = "✅ Status: Ready\n⏳ Chờ lệnh..."
