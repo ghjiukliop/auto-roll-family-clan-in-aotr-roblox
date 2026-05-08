@@ -59,42 +59,32 @@ local function parseInfo()
 end
 
 local function sendWebhook(clan, rarity, rolls)
-    if WEBHOOK_URL == "" or not WEBHOOK_URL then 
-        warn("⚠️ Webhook URL trống!")
-        return 
-    end
+    if not _G.WEBHOOK or _G.WEBHOOK == "" then return end
     
     local data = {
-        ["content"] = "🎉 **Auto Roll Success!**",
+        ["content"] = "🎉 **AOTR AUTO ROLL - SUCCESS!**",
         ["embeds"] = {{
-            ["title"] = "✅ Clan: " .. tostring(clan) .. " (" .. tostring(rarity) .. ")",
-            ["description"] = "Rolls còn lại: " .. tostring(rolls),
-            ["color"] = 65280, -- Màu xanh lá
-            ["footer"] = { ["text"] = "AOTR Auto Roll" },
+            ["title"] = "✅ ĐÃ TÌM THẤY: " .. tostring(clan),
+            ["description"] = "✨ **Độ hiếm:** " .. tostring(rarity) .. "\n🎲 **Số lượt còn lại:** " .. tostring(rolls),
+            ["color"] = 65280, -- Màu xanh lá cực đẹp
+            ["footer"] = { ["text"] = "Hệ thống tự động chạy trên ASUS TUF" },
             ["timestamp"] = os.date("!%Y-%m-%dT%H:%M:%SZ")
         }}
     }
 
-    -- Sử dụng hàm request của Executor thay vì HttpService mặc định
-    local request = (syn and syn.request) or (http and http.request) or http_request or request
+    -- Sử dụng hàm request chuyên dụng của Executor để bypass Discord block
+    local httpRequest = (syn and syn.request) or (http and http.request) or http_request or request
     
-    if request then
-        local success, response = pcall(function()
-            return request({
-                Url = WEBHOOK_URL,
-                Method = "POST",
-                Headers = { ["Content-Type"] = "application/json" },
-                Body = http:JSONEncode(data)
-            })
-        end)
-        
-        if success then
-            print("✅ Webhook đã gửi thành công!")
-        else
-            warn("❌ Lỗi khi gửi Webhook: " .. tostring(response))
-        end
+    if httpRequest then
+        httpRequest({
+            Url = _G.WEBHOOK,
+            Method = "POST",
+            Headers = { ["Content-Type"] = "application/json" },
+            Body = game:GetService("HttpService"):JSONEncode(data)
+        })
+        print("✅ Đã gửi tín hiệu tới Discord!")
     else
-        warn("❌ Executor của bạn không hỗ trợ hàm request!")
+        warn("❌ Executor của bạn quá cũ, không hỗ trợ hàm gửi tin nhắn!")
     end
 end
 
