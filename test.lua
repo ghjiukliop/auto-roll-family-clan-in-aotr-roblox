@@ -1,6 +1,6 @@
 -- [[ CONFIGURATION ]] --
 local WEBHOOK_URL = _G.WEBHOOK or _G.WEBHOOK_URL or ""
-local TARGET_CLANS = _G.CLAN or _G.TARGET_CLANS or {"ACKERMAN", "YEAGER"}
+local TARGET_CLANS = _G.CLAN or _G.TARGET_CLANS or {"Helos", "Fritz"}
 local DELAY_BETWEEN_ROLLS = _G.SPEED or _G.DELAY_BETWEEN_ROLLS or 1.5
 
 -- [[ SERVICES ]] --
