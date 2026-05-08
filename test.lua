@@ -100,4 +100,3 @@ while true do
 end
 
 print("--- Script ket thuc ---")  
-
