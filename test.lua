@@ -1,29 +1,33 @@
--- [[ NHẬN DỮ LIỆU TỪ EXECUTOR ]] --
-local WEBHOOK_URL = _G.WEBHOOK or ""
-local TARGET_CLANS = _G.CLAN or {"HELOS", "FRITZ"}
-local DELAY_BETWEEN_ROLLS = _G.SPEED or 1.5
+-- [[ CONFIGURATION ]] --
+local WEBHOOK_URL = _G.WEBHOOK or _G.WEBHOOK_URL or ""
+local TARGET_CLANS = _G.CLAN or _G.TARGET_CLANS or {"ACKERMAN", "YEAGER"}
+local DELAY_BETWEEN_ROLLS = _G.SPEED or _G.DELAY_BETWEEN_ROLLS or 1.5
 
 -- [[ SERVICES ]] --
-local Players = game:GetService("Players")
-local localPlayer = Players.LocalPlayer
+local player = game:GetService("Players").LocalPlayer
+local pGui = player:WaitForChild("PlayerGui")
 local vim = game:GetService("VirtualInputManager")
 local http = game:GetService("HttpService")
-local playerGui = localPlayer:WaitForChild("PlayerGui")
 
--- [[ PATHS ]] --
-local familyUI = playerGui:WaitForChild("Interface"):WaitForChild("Customisation"):WaitForChild("Family")
-local rollBtn = familyUI:WaitForChild("Buttons_2"):WaitForChild("Roll")
-local rollTitle = rollBtn:WaitForChild("Title") -- Chứa "ROLL(XXX)"
-local familyTitle = familyUI:WaitForChild("Family"):WaitForChild("Title") -- Chứa "NAME(RARITY)"
-local warningPrompt = playerGui.Interface:WaitForChild("Warning"):WaitForChild("Prompt")
+-- [[ UI ELEMENTS ]] --
+-- Đường dẫn chính xác theo yêu cầu của bạn
+local rollTitle = pGui:WaitForChild("Interface"):WaitForChild("Customisation")
+    :WaitForChild("Family"):WaitForChild("Buttons_2"):WaitForChild("Roll"):WaitForChild("Title")
 
--- [[ FUNCTIONS ]] --
+local familyTitle = pGui:WaitForChild("Interface"):WaitForChild("Customisation")
+    :WaitForChild("Family"):WaitForChild("Family"):WaitForChild("Title")
+
+local warningPrompt = pGui:WaitForChild("Interface"):WaitForChild("Warning"):WaitForChild("Prompt")
+
+-- [[ HELPER FUNCTIONS ]] --
+
 local function isVisible(obj)
-    return obj and obj.Visible and obj.AbsoluteSize.X > 0
+    if not obj or not obj:IsA("GuiObject") then return false end
+    return obj.Visible and obj.AbsoluteSize.X > 0
 end
 
 local function smartClick(obj)
-    if isVisible(obj) then
+    if obj and isVisible(obj) then
         local x = obj.AbsolutePosition.X + (obj.AbsoluteSize.X / 2)
         local y = obj.AbsolutePosition.Y + (obj.AbsoluteSize.Y / 2) + 58
         vim:SendMouseButtonEvent(x, y, 0, true, game, 1)
@@ -35,17 +39,17 @@ local function smartClick(obj)
 end
 
 local function parseInfo()
-    -- Lấy tên Clan và Rarity
-    local fText = familyTitle.Text
+    -- Tách Clan Name và Rarity từ: "Fritz (Legendary)"
+    local fText = familyTitle.Text or ""
     local clan = fText:match("^(.-)%s*%(") or fText
     local rarity = fText:match("%((.-)%)") or "COMMON"
     
-    -- Lấy số lượt Roll còn sót lại (Xử lý cả dấu phẩy như 1,234)
-    local rText = rollTitle.Text
-    local rollsStr = rText:match("%(([%d,]+)%)") or "0"
-    local rollsNum = tonumber(rollsStr:gsub(",", "")) or 0
+    -- Lấy số lượt Roll từ: "ROLL (3,403)"
+    local rText = rollTitle.Text or ""
+    local rollsStr = rText:match("%(([%d,]+)%)")
+    local rollsNum = rollsStr and tonumber(rollsStr:gsub(",", "")) or nil
     
-    return clan:upper():gsub("%s+", ""), rarity:upper(), rollsNum
+    return clan:upper():gsub("%s+", ""), rarity:upper(), rollsNum, rText
 end
 
 local function sendWebhook(clan, rarity, rolls)
@@ -53,63 +57,64 @@ local function sendWebhook(clan, rarity, rolls)
     local data = {
         ["content"] = "🎉 **Auto Roll Success!**",
         ["embeds"] = {{
-            ["title"] = "Clan: " .. clan .. " (" .. rarity .. ")",
-            ["description"] = "Rolls còn lại: " .. rolls,
+            ["title"] = "✅ Clan: " .. clan .. " (" .. rarity .. ")",
+            ["description"] = "Rolls còn lại: " .. tostring(rolls),
             ["color"] = 65280
         }}
     }
     pcall(function() http:PostAsync(WEBHOOK_URL, http:JSONEncode(data)) end)
 end
 
--- [[ VÒNG LẶP CHÍNH (MAIN LOOP) ]] --
-print("🚀 Script GitHub đang chạy... Đang kiểm tra lượt roll.")
+-- [[ MAIN LOOP ]] --
+print("🚀 Script GitHub đã chạy. Đang đợi đúng mục tiêu...")
 
 while true do
-    local clanName, rarity, rollsLeft = parseInfo()
+    local clanName, rarity, rollsLeft, rawRollText = parseInfo()
 
-    -- 1. Kiểm tra hết lượt roll
-    if rollsLeft <= 0 then
-        warn("❌ Đã hết lượt Roll (Số lượng: " .. rollsLeft .. ")")
+    -- 1. KIỂM TRA ĐIỀU KIỆN DỪNG ĐẶC BIỆT (Hard Stop)
+    if clanName == "FRITZ" or clanName == "HELOS" then
+        print("🏆 TRÚNG CLAN SIÊU HIẾM: " .. clanName)
+        sendWebhook(clanName, rarity, rollsLeft or "Unknown")
         break
     end
 
-    -- 2. Kiểm tra điều kiện dừng (Fritz, Helos hoặc Target)
+    -- 2. KIỂM TRA CLAN MỤC TIÊU
     local isTarget = false
-    if clanName == "FRITZ" or clanName == "HELOS" then
-        isTarget = true
-    else
-        for _, t in ipairs(TARGET_CLANS) do
-            if clanName == t:upper() then isTarget = true break end
-        end
+    for _, t in ipairs(TARGET_CLANS) do
+        if clanName == t:upper() then isTarget = true break end
     end
 
     if isTarget then
-        print("🏆 ĐÃ TÌM THẤY CLAN: " .. clanName)
-        sendWebhook(clanName, rarity, rollsLeft)
+        print("✅ ĐÃ TÌM THẤY MỤC TIÊU: " .. clanName)
+        sendWebhook(clanName, rarity, rollsLeft or "Unknown")
         break
     end
 
-    -- 3. Xử lý Warning Prompt (Bấm "Yes" nếu ra Epic/Legendary không phải mục tiêu)
-    if isVisible(warningPrompt.Main) then
-        local yesBtn = warningPrompt.Main:FindFirstChild("Yes")
-        if yesBtn then 
-            smartClick(yesBtn)
-            task.wait(0.5) -- Chờ UI cập nhật sau khi bấm Yes
-        end
-    elseif rarity == "EPIC" or rarity == "LEGENDARY" then
-        -- Trường hợp quay ra đồ xịn nhưng UI Warning chưa kịp hiện thì chuẩn bị bấm Yes
-        print("⚠️ Phát hiện " .. rarity .. ", đợi bảng xác nhận...")
-        task.wait(0.2)
-        local yesBtn = warningPrompt.Main:FindFirstChild("Yes")
-        if yesBtn then smartClick(yesBtn) end
+    -- 3. KIỂM TRA HẾT LƯỢT (Chỉ dừng khi text chứa chữ ROLL và số là 0)
+    if rollsLeft == 0 and rawRollText:find("ROLL") then
+        warn("❌ Hết lượt Roll!")
+        break
     end
 
-    -- 4. Thực hiện Roll
-    print("🎲 Đang Roll... Còn lại: " .. rollsLeft)
-    smartClick(rollBtn)
-    
-    -- 5. Đợi UI cập nhật nội dung mới
+    -- 4. XỬ LÝ WARNING PROMPT (Yes/No)
+    -- Nếu trúng Epic/Legendary không phải mục tiêu hoặc bảng Warning hiện lên
+    if isVisible(warningPrompt.Main) or rarity:find("EPIC") or rarity:find("LEGEND") then
+        local yesBtn = warningPrompt.Main:FindFirstChild("Yes")
+        if yesBtn and isVisible(yesBtn) then
+            print("⚠️ Bỏ qua Clan hiếm (" .. rarity .. ") để roll tiếp...")
+            smartClick(yesBtn)
+            task.wait(0.5)
+        end
+    end
+
+    -- 5. THỰC HIỆN ROLL
+    -- Nếu text đang là "." ".." "..." (đang roll) thì đợi, không bấm tiếp
+    if not rawRollText:find("%.%.%.") then
+        print("🎲 Rolling... (Clan: " .. clanName .. " | Lượt: " .. (rollsLeft or "...") .. ")")
+        smartClick(rollTitle) -- Click thẳng vào Title của Button như bạn yêu cầu
+    end
+
     task.wait(DELAY_BETWEEN_ROLLS)
 end
 
-print("🏁 Script đã dừng.")
+print("🏁 Script kết thúc.")
