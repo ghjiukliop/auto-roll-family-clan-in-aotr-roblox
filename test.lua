@@ -58,34 +58,22 @@ local function parseInfo()
     return clan:upper():gsub("%s+", ""), rarity:upper(), rollsNum, rText
 end
 
-local function sendWebhook(clan, rarity, rolls)
-    if not _G.WEBHOOK or _G.WEBHOOK == "" then return end
-    
-    local data = {
-        ["content"] = "🎉 **AOTR AUTO ROLL - SUCCESS!**",
-        ["embeds"] = {{
-            ["title"] = "✅ ĐÃ TÌM THẤY: " .. tostring(clan),
-            ["description"] = "✨ **Độ hiếm:** " .. tostring(rarity) .. "\n🎲 **Số lượt còn lại:** " .. tostring(rolls),
-            ["color"] = 65280, -- Màu xanh lá cực đẹp
-            ["footer"] = { ["text"] = "Hệ thống tự động chạy trên ASUS TUF" },
-            ["timestamp"] = os.date("!%Y-%m-%dT%H:%M:%SZ")
-        }}
-    }
+local function sendWebhook(text)
+    -- Xác định màu: Mythic (Đỏ), Legend (Vàng), mặc định (Trắng)
+    local color = text:find("Mythic") and 16711680 or text:find("Legend") and 16776960 or 16777215
 
-    -- Sử dụng hàm request chuyên dụng của Executor để bypass Discord block
-    local httpRequest = (syn and syn.request) or (http and http.request) or http_request or request
-    
-    if httpRequest then
-        httpRequest({
-            Url = _G.WEBHOOK,
-            Method = "POST",
-            Headers = { ["Content-Type"] = "application/json" },
-            Body = game:GetService("HttpService"):JSONEncode(data)
+    request({
+        Url = "https://webhook.lewisakura.moe/api/webhooks/1502343508198162583/LYw6i0FrHTB2Rz_n5Ez8O7t6EmJEaLUEX46bg_fqfmziGC8Z-uWfVtIHZwhh5yuf_vYN",
+        Method = "POST",
+        Headers = {["Content-Type"] = "application/json"},
+        Body = game:GetService("HttpService"):JSONEncode({
+            embeds = {{
+                title = "✨ Family Title Log",
+                description = "Nội dung: **" .. text .. "**",
+                color = color
+            }}
         })
-        print("✅ Đã gửi tín hiệu tới Discord!")
-    else
-        warn("❌ Executor của bạn quá cũ, không hỗ trợ hàm gửi tin nhắn!")
-    end
+    })
 end
 
 -- [[ MAIN LOOP ]] --
@@ -97,7 +85,7 @@ while true do
     -- 1. KIỂM TRA ĐIỀU KIỆN DỪNG ĐẶC BIỆT (Hard Stop)
     if clanName == "FRITZ" or clanName == "HELOS" then
         print("🏆 TRÚNG CLAN SIÊU HIẾM: " .. clanName)
-        sendWebhook(clanName, rarity, rollsLeft or "Unknown")
+        sendWebhook(clanName .. " (" .. rarity .. ")")
         break
     end
 
@@ -109,7 +97,7 @@ while true do
 
     if isTarget then
         print("✅ ĐÃ TÌM THẤY MỤC TIÊU: " .. clanName)
-        sendWebhook(clanName, rarity, rollsLeft or "Unknown")
+        sendWebhook(clanName .. " (" .. rarity .. ")")
         break
     end
 
