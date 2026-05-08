@@ -5,6 +5,28 @@ local WEBHOOK_URL = _G.WEBHOOK_URL or ""
 local TARGET_CLANS = _G.TARGET_CLANS or {"Fritz", "Helos"}
 local DELAY_BETWEEN_ROLLS = _G.DELAY_BETWEEN_ROLLS or 0.5 -- Thời gian chờ giữa mỗi lần roll (giây)
 
+-- === STATE FILE ===
+local STATE_FILE = "autoroll_state.txt"
+
+-- Lưu trạng thái hiện tại
+local function saveState(step)
+    pcall(function()
+        writefile(STATE_FILE, tostring(step))
+    end)
+    print("💾 Lưu trạng thái: Bước " .. step)
+end
+
+-- Lấy trạng thái đã lưu
+local function loadState()
+    local success, state = pcall(function()
+        return readfile(STATE_FILE)
+    end)
+    if success and state then
+        return tonumber(state) or 1
+    end
+    return 1 -- Default bước 1
+end
+
 -- === SERVICES ===
 local player = game:GetService("Players").LocalPlayer
 local pGui = player:WaitForChild("PlayerGui")
@@ -155,50 +177,81 @@ end
 -- === MAIN WORKFLOW ===
 print("🚀 Bắt đầu Auto Roll Script")
 
+-- Load trạng thái đã lưu
+local currentStep = loadState()
+print("📍 Tiếp tục từ bước: " .. currentStep)
+
 -- 1. Chọn Slot
-print("--- Bước 1: Chọn Slot " .. SLOT .. " ---")
-local slotPath = {"Interface", "Title_Screen", "Slots", SLOT, "Select_" .. SLOT}
-if not clickWithRetry(pGui, slotPath, 15, 3, 0.5) then
-    warn("❌ Không thể click Slot " .. SLOT)
-    return
+if currentStep <= 1 then
+    print("--- Bước 1: Chọn Slot " .. SLOT .. " ---")
+    local slotPath = {"Interface", "Title_Screen", "Slots", SLOT, "Select_" .. SLOT}
+    if not clickWithRetry(pGui, slotPath, 15, 3, 0.5) then
+        warn("❌ Không thể click Slot " .. SLOT)
+        return
+    end
+    task.wait(1)
+    saveState(2)
+    currentStep = 2
 end
-task.wait(1.5)
 
 -- 2. Click Customisation
-print("--- Bước 2: Click Customisation ---")
-if not clickWithRetry(pGui, {"Interface", "Title_Screen", "Buttons", "Customisation"}, 15, 3, 0.5) then
-    warn("❌ Không thể click Customisation")
-    return
+if currentStep <= 2 then
+    print("--- Bước 2: Click Customisation ---")
+    if not clickWithRetry(pGui, {"Interface", "Title_Screen", "Buttons", "Customisation"}, 15, 3, 0.5) then
+        warn("❌ Không thể click Customisation")
+        return
+    end
+    task.wait(1)
+    saveState(3)
+    currentStep = 3
 end
-task.wait(1)
 
 -- 3. Click Family tab
-print("--- Bước 3: Click Family Tab ---")
-if not clickWithRetry(pGui, {"Interface", "Customisation", "Family"}, 15, 3, 0.5) then
-    warn("❌ Không thể click Family Tab")
-    return
+if currentStep <= 3 then
+    print("--- Bước 3: Click Family Tab ---")
+    if not clickWithRetry(pGui, {"Interface", "Customisation", "Family"}, 15, 3, 0.5) then
+        warn("❌ Không thể click Family Tab")
+        return
+    end
+    task.wait(1)
+    saveState(4)
+    currentStep = 4
 end
-task.wait(1)
 
 -- 4. Lấy references cho Roll button và Family name
-print("--- Bước 4: Lấy elements cho Roll Loop ---")
+if currentStep <= 4 then
+    print("--- Bước 4: Lấy elements cho Roll Loop ---")
+    local rollElement = waitAndGetElement(pGui, {"Interface", "Customisation", "Family", "Buttons_2", "Roll"}, 10)
+    local rollTitle = rollElement and rollElement:FindFirstChild("Title")
+    local familyElement = waitAndGetElement(pGui, {"Interface", "Customisation", "Family", "Family"}, 10)
+    local familyTitle = familyElement and familyElement:FindFirstChild("Title")
+    
+    if not rollTitle or not familyTitle then
+        warn("❌ Không tìm thấy Roll hoặc Family elements")
+        return
+    end
+    task.wait(1)
+    saveState(5)
+    currentStep = 5
+end
+
+-- 5. Bắt đầu Roll Loop (không task.wait bước này)
+print("--- Bước 5: Bắt đầu Roll Loop ---")
+
+-- Lấy lại elements nếu cần
 local rollElement = waitAndGetElement(pGui, {"Interface", "Customisation", "Family", "Buttons_2", "Roll"}, 10)
 local rollTitle = rollElement and rollElement:FindFirstChild("Title")
 local familyElement = waitAndGetElement(pGui, {"Interface", "Customisation", "Family", "Family"}, 10)
 local familyTitle = familyElement and familyElement:FindFirstChild("Title")
-
-if not rollTitle or not familyTitle then
-    warn("❌ Không tìm thấy Roll hoặc Family elements")
-    return
-end
-
-print("--- Bước 5: Bắt đầu Roll Loop ---")
 
 -- Roll Loop với Event-driven polling
 local rollAttempt = 0
 local maxRollAttempts = 500
 local lastFamilyName = ""
 local pollInterval = 0.15 -- Interval check UI (không cố định, tối ưu)
+
+-- Lưu state bước 5 (reroll)
+saveState(5)
 
 while rollAttempt < maxRollAttempts do
     -- Kiểm tra hiện trạng UI
@@ -233,12 +286,15 @@ while rollAttempt < maxRollAttempts do
     if found then
         print("🎉 🎉 ĐÃ TÌM THẤY CLAN: " .. clanName .. " 🎉 🎉")
         sendWebhook(clanName, rollsRemaining)
+        -- Xóa state khi thành công
+        pcall(function() delfile(STATE_FILE) end)
         break
     end
     
     -- Kiểm tra hết roll
     if rollsRemaining == "0" then
         warn("⚠️ ⚠️ ĐÃ HẾT LƯỢT ROLL ⚠️ ⚠️")
+        pcall(function() delfile(STATE_FILE) end)
         break
     end
     
@@ -260,5 +316,11 @@ if rollAttempt >= maxRollAttempts then
 end
 
 print("--- Script kết thúc ---")
-print("📊 Tổng cộng: " .. rollAttempt .. " lần roll")  
+print("📊 Tổng cộng: " .. rollAttempt .. " lần roll")
+
+-- Xóa trạng thái khi hoàn thành
+pcall(function()
+    delfile(STATE_FILE)
+    print("✅ Xóa state file - script hoàn thành")
+end)
 
