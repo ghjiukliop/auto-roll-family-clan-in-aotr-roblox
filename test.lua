@@ -1,6 +1,6 @@
 -- [[ CONFIGURATION ]] --
 local WEBHOOK_URL = _G.WEBHOOK or _G.WEBHOOK_URL or ""
-local TARGET_CLANS = _G.CLAN or _G.TARGET_CLANS or {"Helos", "Fritz"}
+local TARGET_CLANS = _G.CLAN or _G.TARGET_CLANS or {"ACKERMAN", "YEAGER"}
 local DELAY_BETWEEN_ROLLS = _G.SPEED or _G.DELAY_BETWEEN_ROLLS or 1.5
 
 -- [[ SERVICES ]] --
@@ -59,16 +59,43 @@ local function parseInfo()
 end
 
 local function sendWebhook(clan, rarity, rolls)
-    if WEBHOOK_URL == "" then return end
+    if WEBHOOK_URL == "" or not WEBHOOK_URL then 
+        warn("⚠️ Webhook URL trống!")
+        return 
+    end
+    
     local data = {
         ["content"] = "🎉 **Auto Roll Success!**",
         ["embeds"] = {{
-            ["title"] = "✅ Clan: " .. clan .. " (" .. rarity .. ")",
+            ["title"] = "✅ Clan: " .. tostring(clan) .. " (" .. tostring(rarity) .. ")",
             ["description"] = "Rolls còn lại: " .. tostring(rolls),
-            ["color"] = 65280
+            ["color"] = 65280, -- Màu xanh lá
+            ["footer"] = { ["text"] = "AOTR Auto Roll" },
+            ["timestamp"] = os.date("!%Y-%m-%dT%H:%M:%SZ")
         }}
     }
-    pcall(function() http:PostAsync(WEBHOOK_URL, http:JSONEncode(data)) end)
+
+    -- Sử dụng hàm request của Executor thay vì HttpService mặc định
+    local request = (syn and syn.request) or (http and http.request) or http_request or request
+    
+    if request then
+        local success, response = pcall(function()
+            return request({
+                Url = WEBHOOK_URL,
+                Method = "POST",
+                Headers = { ["Content-Type"] = "application/json" },
+                Body = http:JSONEncode(data)
+            })
+        end)
+        
+        if success then
+            print("✅ Webhook đã gửi thành công!")
+        else
+            warn("❌ Lỗi khi gửi Webhook: " .. tostring(response))
+        end
+    else
+        warn("❌ Executor của bạn không hỗ trợ hàm request!")
+    end
 end
 
 -- [[ MAIN LOOP ]] --
