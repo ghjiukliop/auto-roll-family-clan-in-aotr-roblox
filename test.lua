@@ -1,3 +1,10 @@
+-- === CONFIGURATION ===
+-- Các biến có thể được set từ global scope (_G), hoặc sử dụng default values
+local SLOT = _G.SLOT or "A"
+local WEBHOOK_URL = _G.WEBHOOK_URL or ""
+local TARGET_CLANS = _G.TARGET_CLANS or {"Fritz", "Helos"}
+local DELAY_BETWEEN_ROLLS = _G.DELAY_BETWEEN_ROLLS or 0.5 -- Thời gian chờ giữa mỗi lần roll (giây)
+
 -- === SERVICES ===
 local player = game:GetService("Players").LocalPlayer
 local pGui = player:WaitForChild("PlayerGui")
@@ -18,6 +25,12 @@ local function click(obj)
 end
 
 local function sendWebhook(clanFound, rollsLeft)
+    -- Kiểm tra webhook URL có hợp lệ không
+    if not WEBHOOK_URL or WEBHOOK_URL == "" then
+        print("⚠️ Webhook URL chưa được cấu hình!")
+        return
+    end
+    
     local data = {
         ["content"] = "🎉 **Auto Roll Success!**",
         ["embeds"] = {{
@@ -100,3 +113,4 @@ while true do
 end
 
 print("--- Script ket thuc ---")  
+
