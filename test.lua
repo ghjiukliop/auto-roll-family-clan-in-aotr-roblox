@@ -1,30 +1,29 @@
--- [[ ĐOẠN NÀY ĐỂ NHẬN DỮ LIỆU TỪ EXECUTOR ]] --
+-- [[ NHẬN DỮ LIỆU TỪ EXECUTOR ]] --
 local WEBHOOK_URL = _G.WEBHOOK or ""
-local TARGET_CLANS = _G.CLAN or {"Helos", "Fritz"}
+local TARGET_CLANS = _G.CLAN or {"HELOS", "FRITZ"}
 local DELAY_BETWEEN_ROLLS = _G.SPEED or 1.5
 
--- [[ CÁC DỊCH VỤ VÀ BIẾN HỆ THỐNG ]] --
+-- [[ SERVICES ]] --
 local Players = game:GetService("Players")
 local localPlayer = Players.LocalPlayer
 local vim = game:GetService("VirtualInputManager")
 local http = game:GetService("HttpService")
 local playerGui = localPlayer:WaitForChild("PlayerGui")
 
--- Đường dẫn UI
+-- [[ PATHS ]] --
 local familyUI = playerGui:WaitForChild("Interface"):WaitForChild("Customisation"):WaitForChild("Family")
 local rollBtn = familyUI:WaitForChild("Buttons_2"):WaitForChild("Roll")
-local rollTitle = rollBtn:WaitForChild("Title")
-local familyTitle = familyUI:WaitForChild("Family"):WaitForChild("Title")
+local rollTitle = rollBtn:WaitForChild("Title") -- Chứa "ROLL(XXX)"
+local familyTitle = familyUI:WaitForChild("Family"):WaitForChild("Title") -- Chứa "NAME(RARITY)"
 local warningPrompt = playerGui.Interface:WaitForChild("Warning"):WaitForChild("Prompt")
 
--- [[ HÀM HỖ TRỢ ]] --
+-- [[ FUNCTIONS ]] --
 local function isVisible(obj)
-    if not obj or not obj:IsA("GuiObject") then return false end
-    return obj.Visible and obj.AbsoluteSize.X > 0
+    return obj and obj.Visible and obj.AbsoluteSize.X > 0
 end
 
 local function smartClick(obj)
-    if obj and isVisible(obj) then
+    if isVisible(obj) then
         local x = obj.AbsolutePosition.X + (obj.AbsoluteSize.X / 2)
         local y = obj.AbsolutePosition.Y + (obj.AbsoluteSize.Y / 2) + 58
         vim:SendMouseButtonEvent(x, y, 0, true, game, 1)
@@ -35,71 +34,82 @@ local function smartClick(obj)
     return false
 end
 
-local function parseClanInfo(text)
-    local name = text:match("^(.-)%s*%(") or text
-    local rarity = text:match("%((.-)%)") or "COMMON"
-    return name:upper():gsub("%s+", ""), rarity:upper()
+local function parseInfo()
+    -- Lấy tên Clan và Rarity
+    local fText = familyTitle.Text
+    local clan = fText:match("^(.-)%s*%(") or fText
+    local rarity = fText:match("%((.-)%)") or "COMMON"
+    
+    -- Lấy số lượt Roll còn sót lại (Xử lý cả dấu phẩy như 1,234)
+    local rText = rollTitle.Text
+    local rollsStr = rText:match("%(([%d,]+)%)") or "0"
+    local rollsNum = tonumber(rollsStr:gsub(",", "")) or 0
+    
+    return clan:upper():gsub("%s+", ""), rarity:upper(), rollsNum
 end
 
-local function sendWebhook(clanFound, rarity, rollsLeft)
+local function sendWebhook(clan, rarity, rolls)
     if WEBHOOK_URL == "" then return end
     local data = {
         ["content"] = "🎉 **Auto Roll Success!**",
         ["embeds"] = {{
-            ["title"] = "Clan Found: " .. clanFound .. " (" .. rarity .. ")",
-            ["description"] = "Remaining Rolls: " .. rollsLeft,
+            ["title"] = "Clan: " .. clan .. " (" .. rarity .. ")",
+            ["description"] = "Rolls còn lại: " .. rolls,
             ["color"] = 65280
         }}
     }
     pcall(function() http:PostAsync(WEBHOOK_URL, http:JSONEncode(data)) end)
 end
 
--- [[ LOGIC CHÍNH ]] --
-print("🚀 Script GitHub đã chạy. Đang đợi đúng mục tiêu...")
+-- [[ VÒNG LẶP CHÍNH (MAIN LOOP) ]] --
+print("🚀 Script GitHub đang chạy... Đang kiểm tra lượt roll.")
 
 while true do
-    local clanName, rarity = parseClanInfo(familyTitle.Text)
-    local rollsRemaining = rollTitle.Text:match("%(([%d,]+)%)") or "0"
+    local clanName, rarity, rollsLeft = parseInfo()
 
-    -- Dừng ngay nếu ra Fritz hoặc Helos (Ưu tiên tuyệt đối)
-    if clanName == "FRITZ" or clanName == "HELOS" then
-        print("🏆 TRÚNG CLAN ĐẶC BIỆT: " .. clanName)
-        sendWebhook(clanName, rarity, rollsRemaining)
+    -- 1. Kiểm tra hết lượt roll
+    if rollsLeft <= 0 then
+        warn("❌ Đã hết lượt Roll (Số lượng: " .. rollsLeft .. ")")
         break
     end
 
-    -- Kiểm tra mục tiêu bạn chọn ở Executor
+    -- 2. Kiểm tra điều kiện dừng (Fritz, Helos hoặc Target)
     local isTarget = false
-    for _, target in ipairs(TARGET_CLANS) do
-        if clanName == target:upper() then
-            isTarget = true
-            break
+    if clanName == "FRITZ" or clanName == "HELOS" then
+        isTarget = true
+    else
+        for _, t in ipairs(TARGET_CLANS) do
+            if clanName == t:upper() then isTarget = true break end
         end
     end
 
     if isTarget then
-        print("✅ Đã tìm thấy mục tiêu: " .. clanName)
-        sendWebhook(clanName, rarity, rollsRemaining)
+        print("🏆 ĐÃ TÌM THẤY CLAN: " .. clanName)
+        sendWebhook(clanName, rarity, rollsLeft)
         break
     end
 
-    if rollsRemaining == "0" then break end
-
-    -- Tự động bấm Yes khi ra Epic/Legendary không phải mục tiêu
-    if rarity == "EPIC" or rarity == "LEGENDARY" then
-        local yesBtn = warningPrompt.Main:FindFirstChild("Yes")
-        if yesBtn then
-            repeat
-                smartClick(yesBtn)
-                task.wait(0.3)
-            until not isVisible(yesBtn)
-        end
-    end
-
-    smartClick(rollBtn)
-    task.wait(DELAY_BETWEEN_ROLLS)
-
+    -- 3. Xử lý Warning Prompt (Bấm "Yes" nếu ra Epic/Legendary không phải mục tiêu)
     if isVisible(warningPrompt.Main) then
-        smartClick(warningPrompt.Main:FindFirstChild("Yes"))
+        local yesBtn = warningPrompt.Main:FindFirstChild("Yes")
+        if yesBtn then 
+            smartClick(yesBtn)
+            task.wait(0.5) -- Chờ UI cập nhật sau khi bấm Yes
+        end
+    elseif rarity == "EPIC" or rarity == "LEGENDARY" then
+        -- Trường hợp quay ra đồ xịn nhưng UI Warning chưa kịp hiện thì chuẩn bị bấm Yes
+        print("⚠️ Phát hiện " .. rarity .. ", đợi bảng xác nhận...")
+        task.wait(0.2)
+        local yesBtn = warningPrompt.Main:FindFirstChild("Yes")
+        if yesBtn then smartClick(yesBtn) end
     end
+
+    -- 4. Thực hiện Roll
+    print("🎲 Đang Roll... Còn lại: " .. rollsLeft)
+    smartClick(rollBtn)
+    
+    -- 5. Đợi UI cập nhật nội dung mới
+    task.wait(DELAY_BETWEEN_ROLLS)
 end
+
+print("🏁 Script đã dừng.")
