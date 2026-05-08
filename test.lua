@@ -12,8 +12,31 @@ local vim = game:GetService("VirtualInputManager")
 local http = game:GetService("HttpService")
 
 -- === HELPER FUNCTIONS ===
+
+-- Kiểm tra object có visible không (kiểm tra cả ancestors)
+local function isVisible(obj)
+    if not obj or not obj:IsA("GuiObject") then return false end
+    
+    local current = obj
+    while current and current:IsA("GuiObject") do
+        if not current.Visible then return false end
+        if current:IsA("ScrollingFrame") or current:IsA("TextBox") or current:IsA("TextButton") then
+            if current.Active == false then return false end
+        end
+        current = current.Parent
+    end
+    
+    -- Kiểm tra ScreenGui
+    local screenGui = obj:FindFirstAncestorOfClass("ScreenGui")
+    if screenGui and not screenGui.Enabled then return false end
+    
+    -- Kiểm tra size hợp lệ
+    return obj.AbsoluteSize.X > 0 and obj.AbsoluteSize.Y > 0
+end
+
+-- Click thông thường (đơn giản)
 local function click(obj)
-    if obj and obj:IsA("GuiObject") then
+    if obj and isVisible(obj) then
         local x = obj.AbsolutePosition.X + (obj.AbsoluteSize.X / 2)
         local y = obj.AbsolutePosition.Y + (obj.AbsoluteSize.Y / 2) + 58 -- Offset cho Roblox Topbar
         vim:SendMouseButtonEvent(x, y, 0, true, game, 1)
@@ -22,6 +45,85 @@ local function click(obj)
         return true
     end
     return false
+end
+
+-- Smart Click với retry mechanism
+local function smartClick(obj, maxRetries, delayBetweenRetries)
+    maxRetries = maxRetries or 5
+    delayBetweenRetries = delayBetweenRetries or 0.3
+    
+    for attempt = 1, maxRetries do
+        if click(obj) then
+            print("✅ SmartClick thành công (lần " .. attempt .. ")")
+            return true
+        end
+        
+        print("⏳ SmartClick lần " .. attempt .. " thất bại, thử lại...")
+        task.wait(delayBetweenRetries)
+    end
+    
+    print("❌ SmartClick thất bại sau " .. maxRetries .. " lần thử")
+    return false
+end
+
+-- Đợi object visible với timeout
+local function waitForElementVisible(obj, maxWaitTime)
+    maxWaitTime = maxWaitTime or 10
+    local startTime = tick()
+    
+    while tick() - startTime < maxWaitTime do
+        if obj and isVisible(obj) then
+            print("✅ Element visible")
+            return obj
+        end
+        task.wait(0.2)
+    end
+    
+    print("❌ Timeout: Element không visible sau " .. maxWaitTime .. "s")
+    return nil
+end
+
+-- Lấy element từ path và đợi visible
+local function waitAndGetElement(parent, pathArray, maxWaitTime)
+    maxWaitTime = maxWaitTime or 10
+    local startTime = tick()
+    local current = parent
+    
+    -- Lấy element từ path
+    for _, name in ipairs(pathArray) do
+        local childWaitTime = maxWaitTime - (tick() - startTime)
+        if childWaitTime <= 0 then
+            print("❌ Timeout: Không tìm thấy " .. name)
+            return nil
+        end
+        
+        current = current:WaitForChild(name, childWaitTime)
+        if not current then
+            print("❌ Timeout: Không tìm thấy " .. name)
+            return nil
+        end
+    end
+    
+    -- Đợi element visible
+    return waitForElementVisible(current, maxWaitTime - (tick() - startTime))
+end
+
+-- Click element từ path với retry
+local function clickWithRetry(parent, pathArray, maxWaitTime, maxRetries, delayBetweenRetries)
+    maxWaitTime = maxWaitTime or 10
+    maxRetries = maxRetries or 3
+    delayBetweenRetries = delayBetweenRetries or 0.5
+    
+    print("🔍 Đang tìm element từ path...")
+    local element = waitAndGetElement(parent, pathArray, maxWaitTime)
+    
+    if not element then
+        print("❌ Không tìm thấy element")
+        return false
+    end
+    
+    print("🖱️ Đang click element...")
+    return smartClick(element, maxRetries, delayBetweenRetries)
 end
 
 local function sendWebhook(clanFound, rollsLeft)
@@ -51,43 +153,75 @@ local function getCleanClanName(text)
 end
 
 -- === MAIN WORKFLOW ===
+print("🚀 Bắt đầu Auto Roll Script")
 
 -- 1. Chọn Slot
-local slotPath = "Interface.Title_Screen.Slots." .. SLOT .. ".Select_" .. SLOT
-local slotBtn = pGui
-for _, name in ipairs(string.split(slotPath, ".")) do slotBtn = slotBtn:WaitForChild(name, 10) end
-
-print("--- Dang chon Slot " .. SLOT .. " ---")
-click(slotBtn)
-task.wait(2)
+print("--- Bước 1: Chọn Slot " .. SLOT .. " ---")
+local slotPath = {"Interface", "Title_Screen", "Slots", SLOT, "Select_" .. SLOT}
+if not clickWithRetry(pGui, slotPath, 15, 3, 0.5) then
+    warn("❌ Không thể click Slot " .. SLOT)
+    return
+end
+task.wait(1.5)
 
 -- 2. Click Customisation
-local customBtn = pGui.Interface.Title_Screen.Buttons:WaitForChild("Customisation", 10)
-click(customBtn)
+print("--- Bước 2: Click Customisation ---")
+if not clickWithRetry(pGui, {"Interface", "Title_Screen", "Buttons", "Customisation"}, 15, 3, 0.5) then
+    warn("❌ Không thể click Customisation")
+    return
+end
 task.wait(1)
 
--- 3. Click vao Family tab
-local familyTab = pGui.Interface.Customisation:WaitForChild("Family", 10)
-click(familyTab)
+-- 3. Click Family tab
+print("--- Bước 3: Click Family Tab ---")
+if not clickWithRetry(pGui, {"Interface", "Customisation", "Family"}, 15, 3, 0.5) then
+    warn("❌ Không thể click Family Tab")
+    return
+end
 task.wait(1)
 
--- 4. Bat dau vong lap Roll
-local rollButton = pGui.Interface.Customisation.Family.Buttons_2:WaitForChild("Roll", 10)
-local rollTitle = rollButton:WaitForChild("Title", 10) -- "ROLL (XXX)"
-local familyTitle = pGui.Interface.Customisation.Family.Family:WaitForChild("Title", 10) -- Tên Family hiện tại
+-- 4. Lấy references cho Roll button và Family name
+print("--- Bước 4: Lấy elements cho Roll Loop ---")
+local rollElement = waitAndGetElement(pGui, {"Interface", "Customisation", "Family", "Buttons_2", "Roll"}, 10)
+local rollTitle = rollElement and rollElement:FindFirstChild("Title")
+local familyElement = waitAndGetElement(pGui, {"Interface", "Customisation", "Family", "Family"}, 10)
+local familyTitle = familyElement and familyElement:FindFirstChild("Title")
 
-print("--- Bat dau qua trinh Auto Roll ---")
+if not rollTitle or not familyTitle then
+    warn("❌ Không tìm thấy Roll hoặc Family elements")
+    return
+end
 
-while true do
-    local currentText = familyTitle.Text -- Ví dụ: "BLOUSE (Common)"
-    local rollsText = rollTitle.Text -- Ví dụ: "ROLL (3,967)"
+print("--- Bước 5: Bắt đầu Roll Loop ---")
+
+-- Roll Loop với Event-driven polling
+local rollAttempt = 0
+local maxRollAttempts = 500
+local lastFamilyName = ""
+local pollInterval = 0.15 -- Interval check UI (không cố định, tối ưu)
+
+while rollAttempt < maxRollAttempts do
+    -- Kiểm tra hiện trạng UI
+    if not isVisible(rollTitle) or not isVisible(familyTitle) then
+        print("⚠️ Roll elements không còn visible, dừng")
+        break
+    end
     
+    -- Lấy text hiện tại
+    local currentText = familyTitle.Text or "" -- Ví dụ: "FRITZ (Rare)"
+    local rollsText = rollTitle.Text or "" -- Ví dụ: "ROLL (3,967)"
+    
+    -- Parse clan name (xóa rarity)
     local clanName = getCleanClanName(currentText)
     local rollsRemaining = rollsText:match("%(([%d,]+)%)") or "0"
     
-    print("Clan hien tai: " .. clanName .. " | Con lai: " .. rollsRemaining .. " luot")
-
-    -- Kiem tra xem co trung Clan muc tieu khong
+    -- Chỉ log khi family thay đổi (tối ưu console spam)
+    if clanName ~= lastFamilyName then
+        print("👨‍👩‍👧 Family: " .. clanName .. " | Rolls: " .. rollsRemaining .. " | Attempt: " .. rollAttempt)
+        lastFamilyName = clanName
+    end
+    
+    -- Kiểm tra xem có trùng target clan không
     local found = false
     for _, target in ipairs(TARGET_CLANS) do
         if clanName == target:upper() then
@@ -95,22 +229,36 @@ while true do
             break
         end
     end
-
+    
     if found then
-        print("🎉 DA TIM THAY CLAN: " .. clanName)
+        print("🎉 🎉 ĐÃ TÌM THẤY CLAN: " .. clanName .. " 🎉 🎉")
         sendWebhook(clanName, rollsRemaining)
-        break -- Dung script
-    end
-
-    -- Neu khong trung, tiep tuc Roll
-    if rollsRemaining == "0" then
-        warn("!!! DA HET LUOT ROLL !!!")
         break
     end
-
-    click(rollButton)
-    task.wait(DELAY_BETWEEN_ROLLS)
+    
+    -- Kiểm tra hết roll
+    if rollsRemaining == "0" then
+        warn("⚠️ ⚠️ ĐÃ HẾT LƯỢT ROLL ⚠️ ⚠️")
+        break
+    end
+    
+    -- Smart Click Roll button
+    if isVisible(rollElement) then
+        smartClick(rollElement, 2, 0.2) -- 2 retries nếu click thất bại
+        rollAttempt = rollAttempt + 1
+        
+        -- Polling thông minh: đợi theo delay config
+        task.wait(DELAY_BETWEEN_ROLLS)
+    else
+        print("⚠️ Roll element không visible, thử lại...")
+        task.wait(0.5)
+    end
 end
 
-print("--- Script ket thuc ---")  
+if rollAttempt >= maxRollAttempts then
+    warn("⚠️ ⚠️ ĐẠT GIỚI HẠN ROLL (" .. maxRollAttempts .. ") ⚠️ ⚠️")
+end
+
+print("--- Script kết thúc ---")
+print("📊 Tổng cộng: " .. rollAttempt .. " lần roll")  
 
